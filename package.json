@@ -1,7 +1,7 @@
 {
-  "name": "toaster-notes",
+  "name": "toaster-cli",
   "version": "0.0.1",
-  "description": "Agent session translator — pop a pi session in, get a claude session out (and vice versa). Literal anagram of \"Rosetta Stone\".",
+  "description": "Translate agent sessions between pi and Claude Code (OpenAI Codex coming). Every conversation becomes TOAST — a portable agent trace.",
   "type": "module",
   "bin": {
     "toaster": "./dist/cli/index.js"

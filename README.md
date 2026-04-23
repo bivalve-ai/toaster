@@ -1,10 +1,12 @@
-# toaster-notes
+# toaster
 
 > Your agent sessions don't have to be agent-specific.
 
-Toaster Notes translates AI-agent session files between formats so you can keep a conversation going across tools. Today it handles **pi ↔ Claude Code**. More formats coming (aider, codex, gemini-cli — PRs welcome).
+Toaster translates AI-agent session files between formats so you can keep a conversation going across tools. Today it handles **pi ↔ Claude Code**. More formats coming (OpenAI Codex, aider, gemini-cli — PRs welcome).
 
-The name is a literal anagram of **Rosetta Stone**. The metaphor is the same.
+Every session becomes **TOAST** — a *Transferable Open Agent Session Trace*. TOAST is the portable intermediary every agent's format translates to and from.
+
+The name is the anagram of Rosetta; the metaphor is the same.
 
 ---
 
@@ -19,13 +21,13 @@ Toaster fixes that by moving the conversation, not the human.
 ## Install
 
 ```
-npm i -g toaster-notes
+npm i -g toaster-cli
 ```
 
 Or ephemeral:
 
 ```
-npx toaster-notes list
+npx toaster-cli list
 ```
 
 The binary is `toaster` either way.
@@ -90,7 +92,7 @@ Toaster reads the source format, maps events + sanitizes ids, and writes the tar
 ## Library use
 
 ```ts
-import { migratePiSessionToClaude, discoverSessions } from "toaster-notes";
+import { migratePiSessionToClaude, discoverSessions } from "toaster-cli";
 
 const sessions = await discoverSessions("pi");
 const latest = sessions[0];
