@@ -4,9 +4,31 @@
 
 Toaster translates AI-agent session files between formats so you can keep a conversation going across tools. Today it handles **pi ↔ Claude Code**. More formats coming (OpenAI Codex, aider, gemini-cli — PRs welcome).
 
-Every session becomes **TOAST** — a *Transferable Open Agent Session Trace*. TOAST is the portable intermediary every agent's format translates to and from.
+Every session becomes **TOAST** — the portable intermediary every agent's format translates to and from.
 
 The name is the anagram of Rosetta; the metaphor is the same.
+
+---
+
+## TOAST
+
+> **T**ransferable **O**pen **A**gent **S**ession **T**race
+
+- **Transferable** — portability is the value prop. Move conversations across agents without re-explaining yourself.
+- **Open** — open-source implementation, open format, open to any agent.
+- **Agent** — what it's about. Session data from AI agents, not generic chat logs.
+- **Session** — what it *is*. One conversation = one TOAST. The unit of data.
+- **Trace** — the terminology agent tooling and LLM observability are converging on. A TOAST is a trace you can resume, not just inspect.
+
+Data flow:
+
+```
+pi session  ──read──▶  TOAST  ──write──▶  claude session
+claude session  ──read──▶  TOAST  ──write──▶  pi session
+codex session  ──read──▶  TOAST  ──write──▶  (any supported agent)
+```
+
+Native formats never talk to each other directly. Everything routes through TOAST.
 
 ---
 
