@@ -13,6 +13,10 @@ export interface ClaudeTextBlock {
 export interface ClaudeThinkingBlock {
   type: "thinking";
   thinking: string;
+  // Anthropic's API requires this — it's a cryptographic attestation that the
+  // thinking came out of a real model response. Without it, resume fails with
+  // `thinking.signature: Field required`. Pi stores it as `thinkingSignature`.
+  signature?: string;
 }
 
 export interface ClaudeToolUseBlock {
