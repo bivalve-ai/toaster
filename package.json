@@ -1,0 +1,44 @@
+{
+  "name": "toaster-notes",
+  "version": "0.0.1",
+  "description": "Agent session translator — pop a pi session in, get a claude session out (and vice versa). Literal anagram of \"Rosetta Stone\".",
+  "type": "module",
+  "bin": {
+    "toaster": "./dist/cli/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "tsc -p tsconfig.test.json && node --test dist-tests/tests/*.test.js",
+    "toaster": "tsc && node dist/cli/index.js"
+  },
+  "keywords": [
+    "agent",
+    "session",
+    "pi",
+    "claude-code",
+    "translator",
+    "rosetta"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
