@@ -13,7 +13,7 @@ Current native session sources:
 - Codex CLI
 - OpenCode export JSON
 
-The standard summary lives at [STANDARD.md](./STANDARD.md). The canonical detailed format spec lives at [spec/toast-v0.1.md](./spec/toast-v0.1.md).
+The standard summary lives at [STANDARD.md](./STANDARD.md). The canonical detailed format spec lives at [spec/toast-v0.1.md](./spec/toast-v0.1.md). Adapter authors should start with [docs/adapters.md](./docs/adapters.md).
 
 ## Privacy / local-first
 
@@ -302,6 +302,8 @@ PRs are welcome, especially for:
 - translation failures
 - upstream format changes
 
-Please read [CONTRIBUTING.md](./CONTRIBUTING.md) first. The short version: open an issue before a first PR, keep proposals concise, and make sure you understand the code you submit.
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md) first. Adapter authors should also read [docs/adapters.md](./docs/adapters.md). The short version: open an issue before a first PR, keep proposals concise, and make sure you understand the code you submit.
+
+For support, see [SUPPORT.md](./SUPPORT.md). For security issues, see [SECURITY.md](./SECURITY.md).
 
 MIT licensed.

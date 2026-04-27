@@ -50,18 +50,11 @@ Do not publish the package from a PR branch. Maintainers handle releases.
 
 ## Adapter Contributions
 
-New agent adapters are welcome, but they need to be grounded in real session files.
-
-A good adapter PR includes:
-
-- a schema/type file for the native format, if useful
-- an adapter in `src/adapters/`
-- detection, read, write, and default-path behavior where possible
-- tests with synthetic fixtures that capture the important native shapes
-- loss records for anything that cannot be preserved exactly
-- README/spec notes if user-facing behavior changes
+New agent adapters are welcome, but they need to be grounded in real session files and small synthetic fixtures.
 
 Adapters should translate through TOAST. Do not add pairwise translators like `agent-a-to-agent-b` unless they are thin backwards-compatibility wrappers over the adapter path.
+
+See [docs/adapters.md](./docs/adapters.md) for the adapter contract, expected files, loss-record guidance, and a small implementation checklist.
 
 ## Privacy and Fixtures
 

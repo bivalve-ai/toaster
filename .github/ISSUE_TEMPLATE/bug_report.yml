@@ -1,0 +1,100 @@
+name: Bug report
+description: Report a Toaster bug
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do not attach raw private session files. Agent sessions may contain source code, prompts, secrets, local paths, and private context.
+
+  - type: input
+    id: version
+    attributes:
+      label: Toaster version or commit
+      placeholder: "0.0.1 or git commit SHA"
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      placeholder: "node -v"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "macOS 15, Ubuntu 24.04, Windows 11, ..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source-agent
+    attributes:
+      label: Source agent
+      options:
+        - pi
+        - Claude Code
+        - Codex CLI
+        - OpenCode
+        - TOAST
+        - unknown / not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: target-agent
+    attributes:
+      label: Target agent, if resume/translate is involved
+      options:
+        - pi
+        - Claude Code
+        - Codex CLI
+        - OpenCode
+        - TOAST
+        - not applicable
+    validations:
+      required: false
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+      render: shell
+      placeholder: "toaster scan --app pi"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Redacted output or error
+      description: Remove paths, secrets, source code, and private prompts before posting.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: If possible, provide a synthetic fixture or tiny redacted trace that preserves the shape of the failing native session.
+    validations:
+      required: false

@@ -32,6 +32,14 @@
     "prepack": "npm run clean && npm run build",
     "toaster": "tsc && node dist/cli/index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bivalve-ai/toaster.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bivalve-ai/toaster/issues"
+  },
+  "homepage": "https://github.com/bivalve-ai/toaster#readme",
   "keywords": [
     "agent",
     "session",
@@ -44,7 +52,7 @@
     "library",
     "local-first"
   ],
-  "author": "",
+  "author": "Bivalve AI",
   "license": "MIT",
   "engines": {
     "node": ">=22"
