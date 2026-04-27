@@ -6,14 +6,16 @@ This is intentionally not part of normal CI. It depends on local agent session s
 
 ## Run
 
+Run the fresh-agent cleanroom harness with:
+
 ```bash
 npm run a2e:cleanroom
 ```
 
-By default the runner uses Pi with the `openai-codex` provider and `gpt-5.4-mini` model:
+By default the cleanroom runner uses Pi with the `openai-codex` provider and `gpt-5.4-mini` model:
 
 ```bash
-pi --provider openai-codex --model gpt-5.4-mini --no-context-files --no-skills --tools read,bash
+pi --provider openai-codex --model gpt-5.4-mini --no-context-files --no-skills --tools read,bash --mode json
 ```
 
 Override those defaults with environment variables:
@@ -22,7 +24,7 @@ Override those defaults with environment variables:
 A2E_PROVIDER=openai-codex A2E_MODEL=gpt-5.4-mini npm run a2e:cleanroom
 ```
 
-The fresh-agent step is a real model call. Some providers do not stream output in this mode, so the harness prints a heartbeat while it waits. The default timeout is 12 minutes; override it with `A2E_TIMEOUT_MS` if needed.
+The fresh-agent step is a real model call. The harness runs Pi in JSON mode so model/tool events stream while it works. The default timeout is 90 seconds; override it with `A2E_TIMEOUT_MS` if needed.
 
 The runner creates a temp project under `/tmp`, packs and installs the local Toaster package there, copies the public README and scenario, and asks the fresh agent to work only from those materials plus `toaster --help`.
 
@@ -37,7 +39,7 @@ The runner prints the temp directory and writes local artifacts there:
   FRESH_AGENT_PROMPT.md
   stdout.txt
   stderr.txt
-  A2E_RUN.json
+  A2E_RUN.json           # cleanroom run metadata
   A2E_REPORT.md          # written by the fresh agent, if successful
   toast-library/
   toast-library-cloud/

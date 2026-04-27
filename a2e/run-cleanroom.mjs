@@ -15,8 +15,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const timeoutMs = Number(process.env.A2E_TIMEOUT_MS ?? 12 * 60 * 1000);
-const heartbeatMs = Number(process.env.A2E_HEARTBEAT_MS ?? 15 * 1000);
+const timeoutMs = Number(process.env.A2E_TIMEOUT_MS ?? 90 * 1000);
+const heartbeatMs = Number(process.env.A2E_HEARTBEAT_MS ?? 2 * 1000);
 const strict = process.env.A2E_STRICT === "1";
 
 const provider = process.env.A2E_PROVIDER ?? "openai-codex";
@@ -214,7 +214,7 @@ try {
     finish("failed", report.reason, report, 1);
   }
 
-  const prompt = `You are running Toaster's A2E cleanroom test.\n\nYou are a fresh agent. Use only files in this temp project, public README/docs copied here, Toaster CLI help, and command output. Do not inspect the Toaster source repository, old transcripts, private notes, or hidden maintainer context.\n\nWorking directory: ${workdir}\nToaster binary: ./node_modules/.bin/toaster\n\nRead README.md and SCENARIO.md, then complete the scenario. Use small limits. Do not pass --launch.\n\nAt the end, write ./A2E_REPORT.md exactly as requested in SCENARIO.md.\n`;
+  const prompt = `You are running Toaster's A2E cleanroom test.\n\nYou are a fresh agent. Use only files in this temp project, public README/docs copied here, Toaster CLI help, and command output. Do not inspect the Toaster source repository, old transcripts, private notes, or hidden maintainer context.\n\nWorking directory: ${workdir}\nToaster binary: ./node_modules/.bin/toaster\n\nRead SCENARIO.md first. Use README.md and toaster --help only if you are unsure. Execute the workflow directly; do not spend time summarizing docs. Use small limits. Do not pass --launch.\n\nAt the end, write ./A2E_REPORT.md exactly as requested in SCENARIO.md.\n`;
   const promptPath = join(workdir, "FRESH_AGENT_PROMPT.md");
   await writeFile(promptPath, prompt);
 
@@ -232,7 +232,7 @@ try {
   console.log(`Provider/model: ${provider}/${model}`);
   console.log(`Timeout: ${Math.round(timeoutMs / 1000)}s; heartbeat: ${Math.round(heartbeatMs / 1000)}s`);
   console.log(`Temp dir: ${workdir}`);
-  console.log("No model output for a while is normal, but the heartbeat below should keep moving.");
+  console.log("Pi runs in JSON mode so tool/model events stream while the agent works.");
   const child = spawn(
     agentCommand,
     [
@@ -244,6 +244,8 @@ try {
       "--no-skills",
       "--tools",
       tools,
+      "--mode",
+      "json",
       "-p",
       `@${promptPath}`,
     ],
