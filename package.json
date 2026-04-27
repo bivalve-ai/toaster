@@ -1,6 +1,6 @@
 {
   "name": "toaster-cli",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Local-first universal session store for AI agents, powered by TOAST.",
   "type": "module",
   "bin": {
@@ -35,7 +35,6 @@
     "dev": "tsc --watch",
     "test": "tsc -p tsconfig.test.json && node --test dist-tests/tests/*.test.js",
     "check": "npm run build && npm test && npm pack --dry-run",
-    "a2e:cleanroom": "node a2e/run-cleanroom.mjs",
     "prepack": "npm run clean && npm run build",
     "toaster": "tsc && node dist/cli/index.js"
   },

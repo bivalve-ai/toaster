@@ -45,13 +45,7 @@ The purpose is to catch Norman doors: places where the software technically work
 
 A good A2E run uses a clean temp project, an installed package or packed tarball, and a temporary TOAST library. The agent should use only `README.md`, `toaster --help`, and command output.
 
-Run the optional fresh-agent cleanroom harness with:
-
-```bash
-npm run a2e:cleanroom
-```
-
-The cleanroom harness is not part of normal CI because it depends on local session stores, provider auth, model availability, and quota. It has a short default timeout and runs Pi in JSON mode so model/tool events stream while the agent works. The harness lives in [`a2e/`](../a2e/README.md).
+A runnable cleanroom harness is planned, but not included yet. It should be short, bounded, and noisy enough that it never looks hung. Until then, use the flow below manually when changing CLI UX, README instructions, ingest/resume behavior, redaction messaging, or library layout.
 
 The minimal flow is:
 
@@ -90,4 +84,4 @@ A change is risky if it breaks one of these expectations:
 - `resume` writes target-native files but does not launch without `--launch`.
 - adapters record lossy behavior instead of silently dropping source data.
 
-When in doubt, prefer a small synthetic fixture plus an A2E smoke run over a large committed trace.
+When in doubt, prefer a small synthetic fixture plus a short manual A2E run over a large committed trace.

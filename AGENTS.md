@@ -25,7 +25,6 @@ npm run build
 npm test
 npm run check
 npm run toaster -- --help
-npm run a2e:cleanroom
 ```
 
 `npm run check` runs build, tests, and package dry-run.

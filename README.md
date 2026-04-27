@@ -315,7 +315,7 @@ Before sharing a branch or opening a PR, run the full local check:
 npm run check
 ```
 
-See [docs/testing.md](./docs/testing.md) for the test philosophy, current coverage, and A2E smoke flow. Maintainers can run the optional fresh-agent cleanroom test with `npm run a2e:cleanroom`.
+See [docs/testing.md](./docs/testing.md) for the test philosophy, current coverage, and A2E guidance.
 
 `npm pack` runs a clean build via `prepack`, so the tarball does not include stale build output.
 
