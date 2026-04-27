@@ -7,11 +7,11 @@ import type { DiscoveredSession } from "./adapters/types.js";
 export type { DiscoveredSession } from "./adapters/types.js";
 
 export async function discoverSessions(
-  filter?: "pi" | "claude" | "codex",
+  filter?: "pi" | "claude" | "codex" | "opencode",
 ): Promise<DiscoveredSession[]> {
   const kinds = filter
     ? [filter]
-    : (Object.keys(adapters) as Array<"pi" | "claude" | "codex">);
+    : (Object.keys(adapters) as Array<"pi" | "claude" | "codex" | "opencode">);
   const all: DiscoveredSession[] = [];
   for (const k of kinds) {
     const adapter = adapters[k];

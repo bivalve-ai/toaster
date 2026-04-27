@@ -1,7 +1,7 @@
 {
   "name": "toaster-cli",
   "version": "0.0.1",
-  "description": "Translate agent sessions between pi and Claude Code (OpenAI Codex coming). Every conversation becomes TOAST — a portable agent trace.",
+  "description": "Local-first universal session store for AI agents, powered by TOAST.",
   "type": "module",
   "bin": {
     "toaster": "./dist/cli/index.js"
@@ -16,12 +16,20 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "STANDARD.md",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "spec"
   ],
   "scripts": {
+    "clean": "rm -rf dist dist-tests",
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "tsc -p tsconfig.test.json && node --test dist-tests/tests/*.test.js",
+    "check": "npm run build && npm test && npm pack --dry-run",
+    "prepack": "npm run clean && npm run build",
     "toaster": "tsc && node dist/cli/index.js"
   },
   "keywords": [
@@ -29,8 +37,12 @@
     "session",
     "pi",
     "claude-code",
-    "translator",
-    "rosetta"
+    "codex",
+    "opencode",
+    "toast",
+    "trace",
+    "library",
+    "local-first"
   ],
   "author": "",
   "license": "MIT",

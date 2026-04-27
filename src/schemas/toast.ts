@@ -1,44 +1,36 @@
-// Trace — the canonical, agent-agnostic shape of an AI agent session.
-// Designed so we can translate between pi / Claude Code / OpenAI Codex (and
-// more to come) via a set of per-agent adapters. Everything readable and
-// writeable flows through this type.
+// TOAST — the canonical, agent-agnostic shape of an AI agent session.
 //
-// Background: agent session files on disk are JSONL with a different schema
-// per vendor. Rather than N-to-N pairwise translators (which grow quadratically
-// as we add agents), each agent gets one adapter: `read(path) → Trace` and
-// `write(trace, opts) → file`. Translation becomes read-from-A → write-to-B.
-//
-// The name is "Trace" (not "Session" or "Transcript") to align with the term
-// that's winning in agent tooling + LLM observability — LangSmith, Phoenix,
-// OpenTelemetry semconv, etc. A Trace can be resumed in a fresh agent; it's
-// not an inert observability record.
+// TOAST stands for Transferable Open Agent Session Trace. Every supported
+// agent reads its native session format into this shape and writes back out of
+// it. Translation becomes read-from-A → TOAST → write-to-B.
 
-export type AgentKind = "pi" | "claude" | "codex";
+export type AgentKind = "pi" | "claude" | "codex" | "opencode";
 
-// Actor role of an individual Turn. "tool" normalizes all the ways agents
+// Actor role of an individual turn. "tool" normalizes all the ways agents
 // represent tool results (pi's role=toolResult message; claude's user-role
 // with tool_result content blocks; codex's function_call_output).
-export type TraceRole = "system" | "developer" | "user" | "assistant" | "tool";
+export type ToastRole = "system" | "developer" | "user" | "assistant" | "tool";
 
 // -------------------- session-level --------------------
 
-export interface Trace {
+export interface Toast {
+  // Kept as `traceVersion` for v1 compatibility with the existing format.
   traceVersion: 1;
   id: string;
   cwd?: string;
   createdAt?: string;
-  /** Set when this Trace forked off from another Trace (pi supports this). */
+  /** Set when this TOAST forked off from another TOAST (pi supports this). */
   parentTraceId?: string;
   source: Provenance;
   /** Which agent(s) wrote to this conversation. Usually one; more on cross-agent replay. */
   agents: AgentFingerprint[];
-  turns: TraceTurn[];
+  turns: ToastTurn[];
   /** Non-conversation events: token counts, permission-mode transitions, model changes, etc. */
-  events: TraceEvent[];
+  events: ToastEvent[];
   /** Catch-all for agent-specific top-level fields we want to preserve across round-trips. */
   metadata: Record<string, unknown>;
   /** Tracked lossy choices during read/write — nothing is dropped silently. */
-  losses: TraceLoss[];
+  losses: ToastLoss[];
 }
 
 export interface AgentFingerprint {
@@ -50,23 +42,23 @@ export interface AgentFingerprint {
 
 // -------------------- turn-level --------------------
 
-export interface TraceTurn {
+export interface ToastTurn {
   id: string;
   parentId?: string | null;
-  role: TraceRole;
+  role: ToastRole;
   timestamp?: string;
-  content: TraceContentBlock[];
+  content: ToastContentBlock[];
   model?: string;
   provider?: string;
   stopReason?: "stop" | "tool_use" | "length" | "error" | "cancelled" | "unknown";
-  usage?: TraceUsage;
+  usage?: ToastUsage;
   provenance: Provenance;
   metadata: Record<string, unknown>;
-  losses?: TraceLoss[];
+  losses?: ToastLoss[];
   /**
    * When set, this turn belongs to a secondary thread (subagent / sidechain),
    * not the main conversation. Multiple subagent branches can coexist in one
-   * Trace. See SubagentContext for the fork-point semantics.
+   * TOAST. See SubagentContext for the fork-point semantics.
    */
   subagent?: SubagentContext;
 }
@@ -76,13 +68,13 @@ export interface TraceTurn {
  *
  * - Claude Code: sidechains spawn from Task() invocations; every sidechain
  *   turn has `isSidechain: true` in the native format.
- * - Pi: parent-session forking is session-level (see Trace.parentTraceId);
+ * - Pi: parent-session forking is session-level (see Toast.parentTraceId);
  *   within-session subagents aren't an established pattern yet.
  * - Codex: not currently a primitive; could emerge via nested Task()-like
  *   behavior later.
  */
 export interface SubagentContext {
-  /** Branch id — unique within this Trace. */
+  /** Branch id — unique within this TOAST. */
   id: string;
   /** The main-thread turn id that invoked the subagent. */
   spawnedByTurnId: string;
@@ -92,20 +84,21 @@ export interface SubagentContext {
 
 // -------------------- content blocks --------------------
 
-export type TraceContentBlock =
-  | TraceTextBlock
-  | TraceThinkingBlock
-  | TraceToolCallBlock
-  | TraceToolResultBlock
-  | TraceUnknownBlock;
+export type ToastContentBlock =
+  | ToastTextBlock
+  | ToastThinkingBlock
+  | ToastNoteBlock
+  | ToastToolCallBlock
+  | ToastToolResultBlock
+  | ToastUnknownBlock;
 
-export interface TraceTextBlock {
+export interface ToastTextBlock {
   type: "text";
   text: string;
   metadata?: Record<string, unknown>;
 }
 
-export interface TraceThinkingBlock {
+export interface ToastThinkingBlock {
   type: "thinking";
   text: string;
   /**
@@ -115,38 +108,51 @@ export interface TraceThinkingBlock {
    * translating pi-thinking to claude usually means dropping the block.
    */
   signature?: string;
-  format?: "pi" | "anthropic" | "codex-reasoning";
+  format?: "pi" | "anthropic" | "codex-reasoning" | "opencode-reasoning";
   metadata?: Record<string, unknown>;
 }
 
-export interface TraceToolCallBlock {
+/**
+ * A note block is a durable downgrade target for content that cannot be
+ * preserved natively in another agent format. Notes are explicit, visible,
+ * and should never pretend to be the original hidden content.
+ */
+export interface ToastNoteBlock {
+  type: "note";
+  kind: string;
+  text: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ToastToolCallBlock {
   type: "tool_call";
   /** Canonical id — safe for any target (Anthropic validates `/^[a-zA-Z0-9_-]+$/`). */
   id: string;
   /** Original id as produced by the source agent, retained for round-trip fidelity. */
   rawId?: string;
   name: string;
-  arguments: Record<string, unknown>;
+  /** Tool input. Usually an object, but some agents persist raw strings or other JSON values. */
+  arguments: unknown;
   metadata?: Record<string, unknown>;
 }
 
-export interface TraceToolResultBlock {
+export interface ToastToolResultBlock {
   type: "tool_result";
-  /** Links to the matching TraceToolCallBlock.id — the canonical id. */
+  /** Links to the matching ToastToolCallBlock.id — the canonical id. */
   toolCallId: string;
   rawToolCallId?: string;
   toolName?: string;
   /** Usually one text block; kept nested so structured results can pass through. */
-  content: TraceContentBlock[];
+  content: ToastContentBlock[];
   isError?: boolean;
   metadata?: Record<string, unknown>;
 }
 
 /**
- * Catch-all for content types we don't recognize. Keeps schema-drift
- * durable — an agent adding a new content block type doesn't cost us data.
+ * Catch-all for content types we don't recognize. Keeps schema drift durable —
+ * an agent adding a new content block type doesn't cost us data.
  */
-export interface TraceUnknownBlock {
+export interface ToastUnknownBlock {
   type: "unknown";
   originalType?: string;
   value: unknown;
@@ -155,7 +161,7 @@ export interface TraceUnknownBlock {
 
 // -------------------- events (non-conversation) --------------------
 
-export interface TraceEvent {
+export interface ToastEvent {
   id: string;
   /**
    * The event type — passed through verbatim from the source agent when
@@ -172,7 +178,7 @@ export interface TraceEvent {
 
 // -------------------- shared bits --------------------
 
-export interface TraceUsage {
+export interface ToastUsage {
   inputTokens?: number;
   outputTokens?: number;
   cacheReadTokens?: number;
@@ -183,8 +189,8 @@ export interface TraceUsage {
 }
 
 /**
- * Where a piece of data came from. Every Trace, Turn, and Event carries
- * this so round-trip bugs can be traced back to the source file + line.
+ * Where a piece of data came from. Every TOAST, turn, and event carries this
+ * so round-trip bugs can be traced back to the source file + line.
  */
 export interface Provenance {
   agent: AgentKind;
@@ -202,7 +208,7 @@ export interface Provenance {
  * expected drops (agent X doesn't have concept Y), warning for unexpected,
  * error when we drop something that might materially change replay.
  */
-export interface TraceLoss {
+export interface ToastLoss {
   severity: "info" | "warning" | "error";
   path: string;
   reason: string;

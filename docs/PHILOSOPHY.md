@@ -1,104 +1,87 @@
 # Philosophy
 
-The non-negotiables. If a change breaks one of these, it probably shouldn't land.
+The non-negotiables. If a change breaks one of these, it probably should not land.
 
----
+## 1. Local-first is the trust contract
 
-## 1. Portability is the north star.
+Toaster reads local session files and writes local files. No account, telemetry, cloud upload, or API call should be required for the CLI/library to work.
 
-Every decision is weighed against: does this make TOAST more or less portable?
+If a feature needs network access, it belongs outside the core unless users explicitly opt in and the boundary is documented.
+
+## 2. Portability is the north star
+
+Every decision is weighed against: does this make agent sessions more portable?
 
 Portability means:
-- A TOAST file written today is readable by every supported agent today, and readable by the same agents next year.
-- A TOAST file moved to another machine Just Works — no server, no account, no daemon required.
-- Anyone can write a new adapter without asking us for permission.
 
-We chose *"trace"* as the format name partly because it's the term LLM tooling is converging on, and partly because it carries no brand. It belongs to the category, not to us.
+- a saved session is understandable without the original app
+- the data lives in plain files the user controls
+- adapters can be added without asking permission
+- moving between supported agents does not require pairwise translators
 
-## 2. TOAST stays lean.
+## 3. TOAST stays lean
 
-TOAST is the raw, agent-agnostic shape of a conversation — turns, content blocks, tool calls, tool results, provenance. Nothing else.
+TOAST is the raw, agent-agnostic shape of a conversation: turns, content blocks, tool calls, tool results, events, provenance, metadata, usage, and losses.
 
-**We will not** add to TOAST:
-- Summaries
-- Embeddings
-- Topic tags
-- Relevance scores
-- Search indices
-- Precomputed "memories"
-- Anything that could be derived later from the raw conversation
+We should not add derived data to the core format:
 
-Those are jobs for tools built *on top of* TOAST. A memory service reads TOAST files and produces its own index. A search tool reads TOAST files and builds its own database. The format stays the same whether or not those tools exist.
+- summaries
+- embeddings
+- topic tags
+- relevance scores
+- search indexes
+- precomputed memories
 
-**Why this matters:** the moment TOAST bakes in someone's idea of what "memory" looks like, it stops being portable. Every downstream tool would need to implement a specific memory shape. Better to let a hundred memory services bloom — all reading the same raw format.
+Those belong in tools built on top of TOAST.
 
-## 3. Nothing is silently dropped.
+## 4. Nothing is silently dropped
 
-When a translation is lossy (it will be), record the loss in `losses[]` with a severity, a JSON path, and a human-readable reason. Users should always be able to see what was dropped on the way to their target agent.
+Translation can be lossy. When it is, record the loss with severity, path, and reason.
 
-If an adapter finds a field it doesn't understand, it preserves it in `metadata` or an unknown block. It doesn't throw it away.
+If an adapter finds data it does not understand, it should preserve it in metadata, an unknown block, an event, or an explicit note whenever practical. Silent deletion is the failure mode to avoid.
 
-## 4. Agent adapters are first-class, not forks.
+## 5. Adapters are first-class
 
-Supporting a new agent is done by writing one more adapter in `src/adapters/`, not by forking the project. The adapter interface is the extension point.
+Supporting a new agent means adding an adapter, not a fork and not a new pairwise translator.
 
-Every supported agent has:
-- A schema file that documents the on-disk format as we've reverse-engineered it
-- An adapter that implements `read → Trace` and `write(Trace) → native`
-- Round-trip fixtures so schema drift is caught early
-- A section in `docs/SCHEMA.md` (eventually) explaining the mapping
+The intended path is always:
 
-Community PRs adding new adapters are welcome and valuable. The format itself doesn't need to grow; it needs to demonstrate breadth.
+```text
+native agent session -> TOAST -> native agent session
+```
 
-## 5. Users own their data. Always.
+Backwards-compatibility helpers may exist, but they should be thin wrappers around the adapter path.
 
-TOAST files are plain JSON. Every field is documented. Readable by a human with a text editor, parseable by `jq`, greppable, diffable, committable to git.
+## 6. Provenance is table stakes
 
-We will not:
-- Encrypt TOAST files as a value-add
-- Add proprietary binary encodings
-- Require a server to interpret them
-- Use vendor-specific schemas that only our tools can read
+Every trace, turn, and event should carry enough provenance to answer: where did this come from?
 
-If the user wants to walk away from our tooling tomorrow, their data goes with them unchanged. This is the trust contract.
+When a round-trip fails, a format changes, or a resume behaves unexpectedly, provenance lets us trace back to the source file, line, raw type, and agent.
 
-## 6. Provenance is table stakes, not an extra.
+## 7. Users own their data
 
-Every `Turn`, `Event`, and `Trace` carries a `Provenance` block. When a round-trip fails, when a format change breaks something, when a cross-agent replay does something unexpected — the user can trace the offending bytes back to the source file, line, and agent.
+TOAST artifacts are plain JSON. They should be readable, greppable, diffable, committable, and portable.
 
-Debugging without provenance is guessing. We don't guess.
+We will not gate the user's own session data behind a service, proprietary binary format, or hosted-only workflow.
 
-## 7. The translator is an honest broker.
+## 8. Be honest about resume semantics
 
-Translators do not silently "fix" user intent. They do not merge content. They do not smooth over edge cases in a way the user hasn't approved.
+Toaster writes session files. It does not execute sessions and it does not control what another agent does after resume.
 
-If a thinking block can't be carried across agents (pi's `thinkingSignature` is not an Anthropic signature), it is *dropped and logged*, not synthesized. If a tool_result references an unknown tool_call, it is *preserved as-is*, not reattached to something plausible. The user gets a clear record of what happened and decides what to do.
+If a generated session can preserve context but not perfect native semantics, say so and record losses. The user should know what changed before they rely on the result.
 
-## 8. N + N, never N × N.
+## 9. Versioning matters
 
-Adapters talk to TOAST, never directly to each other. The moment someone writes `pi-to-codex.ts` we've lost. The orchestrator pairs any source adapter with any target adapter through the IR.
+TOAST files carry `traceVersion`. Breaking format changes should be explicit, rare, and documented. Readers should reject unsupported versions loudly instead of guessing.
 
-This is non-negotiable architecturally. Pairwise adapters are a trap that makes the project harder to evolve as agents come and go.
+## 10. Keep the core small
 
-## 9. Versioning matters.
+The core should be the format, adapters, local library, CLI primitives, and validation. Features that are really memory products, search products, sync products, or hosted workflows should layer on top.
 
-TOAST files carry `traceVersion`. When the format evolves (it will), adapters check the version and know how to handle it. We keep v1 stable for a long time, then ship v2 when absolutely necessary, then support reading both.
+## Not goals
 
-Silent schema changes are worse than loud ones. Version liberally. Break reading backward-compat rarely.
-
-## 10. Don't bake in the cloud.
-
-`toaster-cli` is local-first and will remain local-first. A user with no internet, no account, and no service dependency can translate, read, write, and resume sessions.
-
-The cloud product is a separate thing that consumes TOAST files. It sits *on top of* the CLI. The CLI never depends on it.
-
----
-
-## Things that are explicitly NOT goals
-
-- Implementing agent runtimes. We translate; we don't execute.
-- Being a drop-in replacement for any agent's resume behavior. We produce session files; the agent's own `--resume` does the work.
-- Caring about message rendering / markdown / display. That's the agent's UI concern.
-- Being perfect at day one. Lossy translation with tracked losses is far more useful than no translation.
-
-If you catch yourself writing code that violates one of the above, stop and ask whether the feature belongs here at all.
+- Building an agent runtime
+- Replacing any agent's own resume behavior
+- Becoming an observability SaaS
+- Baking cloud sync or memory into the core format
+- Pretending translation is perfect when it is not

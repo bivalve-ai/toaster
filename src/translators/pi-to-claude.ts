@@ -1,9 +1,9 @@
 // Backwards-compat wrapper. The real logic now lives in src/adapters/claude.ts
-// (via Trace) + src/translate.ts. Kept so existing imports keep working.
+// (via Toast) + src/translate.ts. Kept so existing imports keep working.
 
 import type { WriteResult } from "../adapters/types.js";
 import { translate } from "../translate.js";
-export { sanitizeToolId } from "../adapters/pi.js";
+export { sanitizeToolId } from "../adapters/shared.js";
 export { defaultClaudeSessionPath } from "../adapters/claude.js";
 
 export async function migratePiSessionToClaude(sourcePath: string): Promise<{

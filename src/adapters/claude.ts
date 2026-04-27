@@ -1,7 +1,7 @@
 // Claude Code adapter — reads/writes ~/.claude/projects/<cwd-enc>/<id>.jsonl.
 // Consolidates the read logic from the original claude-to-pi.ts and the write
 // logic from the original pi-to-claude.ts, now both expressed in terms of the
-// canonical Trace.
+// canonical Toast.
 
 import { createReadStream } from "node:fs";
 import { readdir, stat, writeFile, mkdir } from "node:fs/promises";
@@ -12,22 +12,37 @@ import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 
 import type {
-  Trace,
-  TraceTurn,
-  TraceEvent,
-  TraceContentBlock,
+  Toast,
+  ToastTurn,
+  ToastEvent,
+  ToastContentBlock,
   Provenance,
-  TraceLoss,
-  TraceUsage,
-} from "../schemas/trace.js";
+  ToastLoss,
+  ToastUsage,
+} from "../schemas/toast.js";
 import type {
   AgentAdapter,
+  AgentCompat,
   DiscoveredSession,
   ReadOptions,
   WriteOptions,
   WriteResult,
 } from "./types.js";
-import { sanitizeToolId } from "./pi.js";
+import {
+  compactToastForWrite,
+  coerceToolInputObject,
+  joinRenderableText,
+  makeImportedContextTurn,
+  makeImportedEventNote,
+  makeLoss,
+  prependImportedContextTurn,
+  renderContentBlockAsText,
+  sanitizeToolId,
+  summarizeWriteLosses,
+  throwIfStrictValidationFails,
+  validateToastForCompat,
+  validationResultToLosses,
+} from "./shared.js";
 
 const AGENT = "claude" as const;
 const CLAUDE_VERSION_DEFAULT = "2.1.114";
@@ -45,14 +60,22 @@ export function defaultClaudeSessionPath(cwd: string, sessionId: string): string
   return join(homedir(), ".claude", "projects", encodeCwdForClaude(cwd), `${sessionId}.jsonl`);
 }
 
-function makeLoss(severity: TraceLoss["severity"], path: string, reason: string, value?: unknown): TraceLoss {
-  return { severity, path, reason, value };
-}
+export const claudeCompat: AgentCompat = {
+  assistantUsage: "optional",
+  toolInput: "object-only",
+  writeCanonicalToolIds: true,
+  toolCallId: {
+    pattern: "^[a-zA-Z0-9_-]+$",
+    maxLength: 64,
+  },
+  thinking: "signed-only",
+};
 
 // ------- adapter -------
 
 export const claudeAdapter: AgentAdapter = {
   kind: AGENT,
+  compat: claudeCompat,
 
   async detect(path: string): Promise<boolean> {
     try {
@@ -92,13 +115,13 @@ export const claudeAdapter: AgentAdapter = {
     return out.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
   },
 
-  async read(path: string, _options: ReadOptions = {}): Promise<Trace> {
-    const turns: TraceTurn[] = [];
-    const events: TraceEvent[] = [];
-    const losses: TraceLoss[] = [];
+  async read(path: string, _options: ReadOptions = {}): Promise<Toast> {
+    const turns: ToastTurn[] = [];
+    const events: ToastEvent[] = [];
+    const losses: ToastLoss[] = [];
 
     // Assistant snapshots may appear multiple times — coalesce by message id.
-    const assistantByMsgId = new Map<string, { turn: TraceTurn; seen: Set<string> }>();
+    const assistantByMsgId = new Map<string, { turn: ToastTurn; seen: Set<string> }>();
     const toolCalls = new Map<string, { name?: string }>();
 
     let sessionId: string | null = null;
@@ -156,7 +179,7 @@ export const claudeAdapter: AgentAdapter = {
         const key = msg.id || raw.uuid || `ass-${lineNo}`;
         let state = assistantByMsgId.get(key);
         if (!state) {
-          const turn: TraceTurn = {
+          const turn: ToastTurn = {
             id: raw.uuid ?? key,
             parentId: raw.parentUuid ?? null,
             role: "assistant",
@@ -200,7 +223,7 @@ export const claudeAdapter: AgentAdapter = {
               id: sanitizeToolId(b.id),
               rawId: String(b.id),
               name: String(b.name),
-              arguments: (b.input || {}) as Record<string, unknown>,
+              arguments: b.input ?? {},
             });
             toolCalls.set(String(b.id), { name: String(b.name) });
           } else {
@@ -283,7 +306,7 @@ export const claudeAdapter: AgentAdapter = {
 
     if (!sessionId) throw new Error(`claude session id not found in ${path}`);
 
-    const trace: Trace = {
+    const trace: Toast = {
       traceVersion: 1,
       id: sessionId,
       cwd: cwd ?? undefined,
@@ -298,14 +321,36 @@ export const claudeAdapter: AgentAdapter = {
     return trace;
   },
 
-  async write(trace: Trace, options: WriteOptions = {}): Promise<WriteResult> {
+  validateWrite(trace: Toast, options: WriteOptions = {}) {
+    return validateToastForCompat(AGENT, trace, claudeCompat, options);
+  },
+
+  async write(trace: Toast, options: WriteOptions = {}): Promise<WriteResult> {
+    const preflight = validateToastForCompat(AGENT, trace, claudeCompat, options);
+    throwIfStrictValidationFails(AGENT, options, preflight);
+
+    const { trace: preparedTrace, losses: compactionLosses } = compactToastForWrite(AGENT, trace, claudeCompat, options);
+    const traceWithImportedEvents = preparedTrace.events.length > 0
+      ? prependImportedContextTurn(
+          preparedTrace,
+          makeImportedContextTurn(
+            `imported-events-${randomUUID()}`,
+            preparedTrace.createdAt ?? new Date().toISOString(),
+            preparedTrace.events.map((event) => makeImportedEventNote(event)),
+            AGENT,
+          ),
+        )
+      : preparedTrace;
     const sessionId = options.sessionId ?? randomUUID();
-    const cwd = trace.cwd ?? homedir();
+    const cwd = traceWithImportedEvents.cwd ?? homedir();
     const version = options.agentVersion ?? CLAUDE_VERSION_DEFAULT;
     const defaultModel = options.defaultModel ?? "claude-sonnet-4-20250514";
     const target = options.targetPath ?? defaultClaudeSessionPath(cwd, sessionId);
 
-    const losses: TraceLoss[] = [];
+    const losses: ToastLoss[] = [...validationResultToLosses(preflight), ...compactionLosses];
+    if (preparedTrace.events.length > 0) {
+      losses.push(makeLoss("info", "events[]", `${preparedTrace.events.length} event(s) preserved as imported context for claude`));
+    }
     const out: Record<string, unknown>[] = [];
 
     // Header.
@@ -323,15 +368,15 @@ export const claudeAdapter: AgentAdapter = {
       version,
     });
 
-    for (let i = 0; i < trace.turns.length; i++) {
-      const turn = trace.turns[i];
-      const ts = turn.timestamp ?? trace.createdAt ?? new Date().toISOString();
+    for (let i = 0; i < traceWithImportedEvents.turns.length; i++) {
+      const turn = traceWithImportedEvents.turns[i];
+      const ts = turn.timestamp ?? traceWithImportedEvents.createdAt ?? new Date().toISOString();
 
       if (turn.role === "user" || turn.role === "system" || turn.role === "developer") {
         // Native claude doesn't have a `developer` or `system` turn type — fold into `user`
         // and record the mapping so it's visible.
         if (turn.role !== "user") losses.push(makeLoss("info", `turns[${i}]`, `role "${turn.role}" folded to user for claude`));
-        const text = turn.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
+        const text = joinRenderableText(turn.content);
         out.push({
           type: "user",
           ...envelope(turn.id, turn.parentId ?? null, ts),
@@ -342,8 +387,10 @@ export const claudeAdapter: AgentAdapter = {
       } else if (turn.role === "assistant") {
         const blocks: Record<string, unknown>[] = [];
         for (const b of turn.content) {
-          if (b.type === "text" && b.text) blocks.push({ type: "text", text: b.text });
-          else if (b.type === "thinking") {
+          if (b.type === "text" || b.type === "note") {
+            const text = renderContentBlockAsText(b);
+            if (text) blocks.push({ type: "text", text });
+          } else if (b.type === "thinking") {
             // Only valid if we have a real Anthropic signature — pi's thinkingSignature
             // doesn't validate against Anthropic's API. Drop otherwise + flag.
             if (b.format === "anthropic" && typeof b.signature === "string" && b.signature.length > 0) {
@@ -352,7 +399,7 @@ export const claudeAdapter: AgentAdapter = {
               losses.push(makeLoss("info", `turns[${i}].content.thinking`, `thinking block dropped — signature missing or not anthropic-format (format=${b.format ?? "unknown"})`));
             }
           } else if (b.type === "tool_call") {
-            blocks.push({ type: "tool_use", id: b.id, name: b.name, input: b.arguments });
+            blocks.push({ type: "tool_use", id: b.id, name: b.name, input: claudeToolInput(b.arguments, losses, `turns[${i}].content`) });
           } else if (b.type === "unknown") {
             losses.push(makeLoss("info", `turns[${i}].content`, `dropped unknown block "${b.originalType ?? "?"}"`));
           }
@@ -370,16 +417,13 @@ export const claudeAdapter: AgentAdapter = {
       } else if (turn.role === "tool") {
         // Tool turns in claude live inside a user-role envelope.
         const result = turn.content.find((b) => b.type === "tool_result") as
-          | { type: "tool_result"; toolCallId: string; rawToolCallId?: string; content: TraceContentBlock[]; isError?: boolean }
+          | { type: "tool_result"; toolCallId: string; rawToolCallId?: string; content: ToastContentBlock[]; isError?: boolean }
           | undefined;
         if (!result) {
           losses.push(makeLoss("warning", `turns[${i}]`, "tool role turn has no tool_result block"));
           continue;
         }
-        const contentText = (result.content || [])
-          .filter((b) => b.type === "text")
-          .map((b) => (b as { text: string }).text)
-          .join("");
+        const contentText = joinRenderableText(result.content || []);
         out.push({
           type: "user",
           ...envelope(turn.id, turn.parentId ?? null, ts),
@@ -396,27 +440,24 @@ export const claudeAdapter: AgentAdapter = {
       }
     }
 
-    // We don't write trace.events here — claude regenerates permission-mode + snapshots itself.
-    if (trace.events.length > 0) {
-      losses.push(makeLoss("info", `events[]`, `${trace.events.length} non-conversation events not written in claude format`));
-    }
+    // Claude has no native slot for arbitrary events in the translated session format.
 
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, out.map((o) => JSON.stringify(o)).join("\n") + "\n", "utf-8");
 
     return {
-      sourceAgent: trace.source?.agent,
+      sourceAgent: traceWithImportedEvents.source?.agent,
       targetAgent: AGENT,
       target,
       sessionId,
       cwd,
-      turns: trace.turns.length,
-      events: trace.events.length,
-      losses: [...trace.losses, ...losses].map((l) => ({ severity: l.severity, path: l.path, reason: l.reason })),
+      turns: traceWithImportedEvents.turns.length,
+      events: traceWithImportedEvents.events.length,
+      losses: summarizeWriteLosses(traceWithImportedEvents, losses),
     };
   },
 
-  defaultPath(trace: Trace, options: WriteOptions = {}): string {
+  defaultPath(trace: Toast, options: WriteOptions = {}): string {
     const sessionId = options.sessionId ?? randomUUID();
     return defaultClaudeSessionPath(trace.cwd ?? homedir(), sessionId);
   },
@@ -439,7 +480,7 @@ function inferProvider(model?: string): string | undefined {
   return undefined;
 }
 
-function mapClaudeStopReason(s?: string | null): TraceTurn["stopReason"] {
+function mapClaudeStopReason(s?: string | null): ToastTurn["stopReason"] {
   if (!s) return undefined;
   if (s === "tool_use") return "tool_use";
   if (s === "max_tokens" || s === "length") return "length";
@@ -448,7 +489,7 @@ function mapClaudeStopReason(s?: string | null): TraceTurn["stopReason"] {
   return "unknown";
 }
 
-function mapClaudeUsage(u?: any): TraceUsage | undefined {
+function mapClaudeUsage(u?: any): ToastUsage | undefined {
   if (!u) return undefined;
   return {
     inputTokens: u.input_tokens,
@@ -456,6 +497,14 @@ function mapClaudeUsage(u?: any): TraceUsage | undefined {
     cacheReadTokens: u.cache_read_input_tokens,
     cacheWriteTokens: u.cache_creation_input_tokens,
   };
+}
+
+function claudeToolInput(
+  input: unknown,
+  losses: ToastLoss[],
+  path: string,
+): Record<string, unknown> {
+  return coerceToolInputObject("claude", input, losses, path);
 }
 
 function stringifyToolContent(c: unknown): string {

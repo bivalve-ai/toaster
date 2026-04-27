@@ -1,155 +1,307 @@
 # toaster
 
-> Your agent sessions don't have to be agent-specific.
+A local-first universal session store for AI agents.
 
-Toaster translates AI-agent session files between formats so you can keep a conversation going across tools. Today it handles **pi ↔ Claude Code**. More formats coming (OpenAI Codex, aider, gemini-cli — PRs welcome).
+Toaster ingests sessions from local agent tools into TOAST: Transferable Open Agent Session Trace, a universal standard format for preserving agent histories, tool calls, tool results, metadata, provenance, and known losses.
 
-Every session becomes **TOAST** — the portable intermediary every agent's format translates to and from.
+Once sessions are in your TOAST library, you can list them, keep them in git, resume them in supported agents, export them, or browse them with local tools.
 
-The name is the anagram of Rosetta; the metaphor is the same.
+Current native session sources:
 
----
+- pi
+- Claude Code
+- Codex CLI
+- OpenCode export JSON
 
-## TOAST
+The standard summary lives at [STANDARD.md](./STANDARD.md). The canonical detailed format spec lives at [spec/toast-v0.1.md](./spec/toast-v0.1.md).
 
-> **T**ransferable **O**pen **A**gent **S**ession **T**race
+## Privacy / local-first
 
-- **Transferable** — portability is the value prop. Move conversations across agents without re-explaining yourself.
-- **Open** — open-source implementation, open format, open to any agent.
-- **Agent** — what it's about. Session data from AI agents, not generic chat logs.
-- **Session** — what it *is*. One conversation = one TOAST. The unit of data.
-- **Trace** — the terminology agent tooling and LLM observability are converging on. A TOAST is a trace you can resume, not just inspect.
+Toaster runs locally. There is no account, cloud service, telemetry, analytics, or API upload in the CLI/library.
 
-Data flow:
+By default, Toaster only:
 
-```
-pi session  ──read──▶  TOAST  ──write──▶  claude session
-claude session  ──read──▶  TOAST  ──write──▶  pi session
-codex session  ──read──▶  TOAST  ──write──▶  (any supported agent)
-```
+- reads local session files from supported agent tools
+- writes local TOAST artifacts and translated session files
+- writes temporary files during corpus tests
+- prints JSON/results to stdout/stderr
 
-Native formats never talk to each other directly. Everything routes through TOAST.
+Your session contents can include source code, prompts, tool outputs, local paths, secrets, model responses, and private context. Treat TOAST files like sensitive source artifacts.
 
----
+Two important boundaries:
 
-## Why
+- Installing packages with npm may contact the npm registry, but Toaster itself does not upload your sessions.
+- If you resume or launch another agent from a translated session, that agent may send context to its model provider according to that agent's own behavior. Toaster's part is local file conversion.
 
-You're mid-conversation with one agent, the other agent is better at what you need next, but switching means you re-explain everything — the files you're in, the thing you tried, the thing it almost worked. That friction keeps people locked into whichever tool they started the day with.
+## Status
 
-Toaster fixes that by moving the conversation, not the human.
+This is early software.
 
----
+The supported native stores are inferred from real session files, not stable public specs. Upstream changes may break ingestion or resume targets. Some sessions will preserve cleanly. Some will be lossy.
+
+Losses are tracked in TOAST and returned to the caller.
 
 ## Install
 
-```
+```bash
 npm i -g toaster-cli
 ```
 
-Or ephemeral:
+Or:
 
+```bash
+npx toaster-cli scan
 ```
-npx toaster-cli list
-```
-
-The binary is `toaster` either way.
 
 Requires Node 22+.
 
----
+## CLI
 
-## Use
+Scan native sessions, without writing anything:
 
-### See what sessions you have
-
-```
-toaster list
-toaster list --pi
-toaster list --claude
-```
-
-Prints one row per session: id, agent, age, size, cwd. Most-recent first.
-
-### Pi → Claude Code
-
-```
-toaster pi-to-claude <session-id-or-path>
+```bash
+toaster scan
+toaster scan --app pi
+toaster scan --app claude
+toaster scan --app codex
 ```
 
-Writes a claude-format JSONL at `~/.claude/projects/<cwd>/<new-id>.jsonl` and prints the resume command:
+`toaster list --saved` lists your TOAST library. `toaster list` is kept as a legacy native-session listing; prefer `scan` for native stores.
 
-```
-→ claude --resume <new-id>   (from /your/project)
-```
+### Create a TOAST library
 
-`cd` into the cwd, run it. The conversation picks up where you left off.
+A TOAST library is the local store of portable agent sessions. It is plain files and git-friendly. By default it lives at:
 
-### Claude Code → Pi
-
-```
-toaster claude-to-pi <session-id-or-path>
+```text
+~/toast-library
 ```
 
-Writes a pi-format JSONL at `~/.pi/agent/sessions/--<cwd-encoded>--/<ts>_<id>.jsonl` and prints the pi resume command.
+Each saved session is written as:
 
----
+```text
+~/toast-library/sessions/<agent>/<session-slug>/
+  toast.json   # canonical Transferable Open Agent Session Trace
+  meta.json    # save metadata
+  README.md    # human summary and resume commands
+```
 
-## What it actually does
+Bulk saving is sensitive: agent sessions can include source code, prompts, tool outputs, local paths, secrets, model responses, and private context. Use `--dry-run` first, then explicitly confirm with `--yes`:
 
-Agent session files are JSONL — one event per line — but the schemas differ:
+```bash
+# See what Toaster can find without writing anything.
+toaster ingest --all --dry-run
 
-| | pi | Claude Code |
-|---|---|---|
-| location | `~/.pi/agent/sessions/--<cwd>--/<ts>_<id>.jsonl` | `~/.claude/projects/<cwd>/<id>.jsonl` |
-| cwd encoding | `--a-b-c--` | `-a-b-c` |
-| event types | `session`, `message`, `model_change`, … | `user`, `assistant`, `permission-mode`, `file-history-snapshot`, … |
-| tool call block | `{type:"toolCall", id, name, arguments}` | `{type:"tool_use", id, name, input}` |
-| tool result | role="toolResult" message | role="user" with `tool_result` block inside |
-| tool id format | pi composite (can contain `|`) | must match `/^[a-zA-Z0-9_-]+$/` (Anthropic API requirement) |
+# Pull every new/changed local agent session into ~/toast-library.
+toaster ingest --all --yes
 
-Toaster reads the source format, maps events + sanitizes ids, and writes the target format with a new id in the right place on disk. The receiving agent's `--resume <id>` picks it up as if it had written the file itself.
+# Pull only one app's new/changed sessions.
+toaster ingest --all --app pi --yes
 
----
+# Pull one specific session.
+toaster ingest <session-id-or-path> --name my-session
 
-## Library use
+# List saved TOAST artifacts.
+toaster list --saved
+```
+
+`toaster ingest --all` is incremental: it skips sessions whose native source mtime and byte size have not changed. Use `--force` to rewrite everything. `toaster save ...` is still supported as a legacy alias for `toaster ingest ...`.
+
+You can put `~/toast-library` in git if you want history and remotes, but do not push it publicly unless you have reviewed or redacted the contents.
+
+### Redaction and cloud-safe mirrors
+
+Toaster can create redacted TOAST artifacts and redacted/aliased mirrors for safer cloud storage.
+
+```bash
+# Inspect default config.
+toaster config get
+
+# Configure redaction. `local` is regex-only and offline.
+toaster config set redaction.provider local
+toaster config set redaction.alias true
+
+# Optional: inspect local redaction setup and OPF checkpoint status.
+toaster redaction doctor
+
+# Optional: use OpenAI Privacy Filter if `opf` is installed locally.
+toaster config set redaction.provider opf
+toaster config set redaction.device cpu
+
+# Preview redactions without writing a redacted artifact.
+toaster redact <session-id-or-saved-name> --dry-run
+
+# Write a redacted copy and sanitized report.
+toaster redact <session-id-or-saved-name> --alias --out safe.toast.json
+
+# Create a local redacted/aliased mirror of the whole library. This does not upload.
+toaster mirror --cloud-safe-local --alias --yes --out ~/toast-library-cloud
+
+# Try a small mirror first.
+toaster mirror --cloud-safe-local --alias --yes --limit 3 --out ~/toast-library-cloud-test
+```
+
+Raw sessions stay in `~/toast-library`. Cloud-safe mirrors should contain only redacted TOAST files and sanitized redaction reports. Alias mappings are local-only under `~/.config/toaster/`; do not sync that directory. Commands using `--alias` print this write location explicitly.
+
+### Resume a saved or native session
+
+```bash
+toaster resume <session-id-or-path-or-saved-name> --in claude
+toaster resume <session-id-or-path-or-saved-name> --in pi
+toaster resume <session-id-or-path-or-saved-name> --in codex
+toaster resume <session-id-or-path-or-saved-name> --in opencode
+```
+
+Resume writes a target-native session file, then prints a launch command. It does not launch the target app unless you pass `--launch`.
+
+When the target has a known launch command, Toaster prints it. For example:
+
+```bash
+cd /path/to/project && claude --resume <new-session-id>
+```
+
+Export one session as raw TOAST JSON:
+
+```bash
+toaster export <session-id-or-path-or-saved-name> --to toast --out session.toast.json
+```
+
+Run a local corpus directory through read/validate/write/reread:
+
+```bash
+toaster corpus --dir ./corpus
+toaster corpus --dir ./corpus --to claude
+toaster corpus --dir ./corpus --thinking-policy drop
+```
+
+Low-level translate primitive:
+
+```bash
+toaster translate --to claude <path-or-id>
+toaster translate --to pi <path-or-id>
+toaster translate --to codex <path-or-id>
+toaster translate --to opencode <path-or-id>
+toaster translate --strict --to claude <path-or-id>
+toaster translate --thinking-policy drop --to claude <path-or-id>
+```
+
+Source format is auto-detected from the file or session id. If a hand-written or unusual file cannot be detected, pass `--from <agent>` as a fallback:
+
+```bash
+toaster translate --to claude --from pi <path-or-id>
+```
+
+Legacy aliases:
+
+```bash
+toaster pi-to-claude <path-or-id>
+toaster claude-to-pi <path-or-id>
+```
+
+Commands print JSON with the target path, session id, and basic stats.
+The corpus command emits one report covering detection, read success, validation warnings/errors, write success, reread success, and simple model/usage presence.
+
+`--strict` fails early on preflight validation errors. By default, non-portable thinking is preserved as imported context when writing target formats that cannot store it natively. Use `--thinking-policy drop` to discard it instead.
+
+The library also exposes `validateToast(agent, toast, options)` or `adapter.validateWrite(toast, options)` for preflight checks without writing.
+
+## Session locations
+
+By default, toaster reads and writes sessions in the locations used by each supported agent.
+
+pi:
+
+```text
+~/.pi/agent/sessions/--<cwd-encoded>--/<timestamp>_<id>.jsonl
+```
+
+Claude Code:
+
+```text
+~/.claude/projects/<cwd-encoded>/<id>.jsonl
+```
+
+Codex:
+
+```text
+~/.codex/sessions/YYYY/MM/DD/rollout-<local-timestamp>-<id>.jsonl
+```
+
+OpenCode:
+
+```text
+<cwd>/<session-id>.opencode.json
+```
+
+OpenCode support currently reads and writes export-style JSON files rather than discovering OpenCode's native session store.
+
+## Library
 
 ```ts
-import { migratePiSessionToClaude, discoverSessions } from "toaster-cli";
+import { discoverSessions, translate } from "toaster-cli";
 
 const sessions = await discoverSessions("pi");
 const latest = sessions[0];
-const result = await migratePiSessionToClaude(latest.path);
-console.log(result.sessionId); // → resume via `claude --resume ${result.sessionId}`
+const result = await translate("claude", latest.path);
+
+console.log(result.target);
+console.log(result.sessionId);
 ```
 
-Full exports: `migratePiSessionToClaude`, `translatePiToClaudeSession`, `migrateClaudeSessionToPi`, `normalizeClaudeJSONL`, `discoverSessions`, plus the schema types.
+Lower-level API:
 
----
+```ts
+import { readToast, validateToast, writeToast } from "toaster-cli";
 
-## Honest caveats
+const toast = await readToast("pi", "/path/to/session.jsonl");
+const preflight = validateToast("claude", toast);
+if (!preflight.ok) throw new Error(preflight.errors.join("; "));
+const result = await writeToast("codex", toast);
+```
 
-- **Lossy.** Pi meta-events (model changes, thinking-level changes) and Claude's file-history snapshots are dropped by default. Tool results are preserved as text; any binary payloads get stringified.
-- **Tool-name collisions.** Pi's `bash` ≠ Claude Code's `Bash`. Resume works (the receiving agent reads the result and continues); live re-invocation of the same tool would need a name-mapping layer that isn't here yet.
-- **Schema-reverse-engineered.** Neither pi nor Claude Code publishes its session format as a public contract. A patch release could break this. Pin agent versions in your workflow until we add version detection.
-- **Security: arbitrary content.** A hand-crafted session could inject prompts or fake tool results on resume. Don't run `toaster` on untrusted JSONL files from strangers without review.
+## Caveats
 
----
+Toaster tries to preserve:
 
-## Roadmap
+- conversation turns
+- tool calls
+- tool results
+- cwd
+- some model metadata
 
-- Aider, codex, gemini-cli translators.
-- Canonical intermediate representation (IR) — today toaster does pairwise translation. N-agent support needs normalize-in-the-middle.
-- Fidelity scoring — tell the user before they resume how much of the source was preserved.
-- `toaster inspect <session>` — human-readable turn-by-turn view.
-- `toaster watch` — auto-mirror new pi sessions as claude sessions (for people who want both to stay in sync).
+But translation is not perfect. Known problems:
 
----
+- agent-specific events may be dropped or downgraded to generic events
+- some block types have no equivalent in the target format
+- tool names do not imply equivalent runtime tools across agents
+- non-object tool inputs may need wrapping in object-only formats
+- structured or binary tool output may be stringified
+- thinking and signature formats are not portable across all agents
+
+## Development
+
+```bash
+npm run build
+npm test
+npm run toaster -- list
+```
+
+Before sharing a branch or opening a PR, run the full local check:
+
+```bash
+npm run check
+```
+
+`npm pack` runs a clean build via `prepack`, so the tarball does not include stale build output.
 
 ## Contributing
 
-The two things that move this project forward fastest are:
+PRs are welcome, especially for:
 
-1. **A session dump from an agent we don't yet support**, plus enough context on the format that we can write a translator.
-2. **Round-trip failures on real long sessions.** Attach the session, describe what broke. These drive the hard fixes.
+- new agent adapters
+- synthetic fixtures based on real session shapes
+- translation failures
+- upstream format changes
 
-PRs welcome. MIT license.
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md) first. The short version: open an issue before a first PR, keep proposals concise, and make sure you understand the code you submit.
+
+MIT licensed.

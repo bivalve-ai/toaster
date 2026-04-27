@@ -11,22 +11,38 @@ import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 
 import type {
-  Trace,
-  TraceTurn,
-  TraceEvent,
-  TraceContentBlock,
+  Toast,
+  ToastTurn,
+  ToastEvent,
+  ToastContentBlock,
   Provenance,
-  TraceLoss,
-  TraceUsage,
-  TraceRole,
-} from "../schemas/trace.js";
+  ToastLoss,
+  ToastUsage,
+  ToastRole,
+} from "../schemas/toast.js";
 import type {
   AgentAdapter,
+  AgentCompat,
   DiscoveredSession,
   ReadOptions,
   WriteOptions,
   WriteResult,
 } from "./types.js";
+import {
+  compactToastForWrite,
+  coerceToolInputObject,
+  joinRenderableText,
+  makeImportedContextTurn,
+  makeImportedEventNote,
+  makeLoss,
+  prependImportedContextTurn,
+  renderContentBlockAsText,
+  sanitizeToolId,
+  summarizeWriteLosses,
+  throwIfStrictValidationFails,
+  validateToastForCompat,
+  validationResultToLosses,
+} from "./shared.js";
 
 const AGENT = "pi" as const;
 
@@ -46,14 +62,22 @@ export function defaultPiSessionPath(cwd: string, sessionId: string, timestamp?:
   return join(homedir(), ".pi", "agent", "sessions", enc, `${ts}_${sessionId}.jsonl`);
 }
 
-function makeLoss(severity: TraceLoss["severity"], path: string, reason: string, value?: unknown): TraceLoss {
-  return { severity, path, reason, value };
-}
+export const piCompat: AgentCompat = {
+  assistantUsage: "required",
+  toolInput: "object-only",
+  writeCanonicalToolIds: false,
+  toolCallId: {
+    pattern: "^[a-zA-Z0-9_-]+$",
+    maxLength: 64,
+  },
+  thinking: "native",
+};
 
 // ------- adapter -------
 
 export const piAdapter: AgentAdapter = {
   kind: AGENT,
+  compat: piCompat,
 
   async detect(path: string): Promise<boolean> {
     // Quick sniff: first non-empty line must be a pi session header.
@@ -97,10 +121,10 @@ export const piAdapter: AgentAdapter = {
     return out.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
   },
 
-  async read(path: string, _options: ReadOptions = {}): Promise<Trace> {
-    const turns: TraceTurn[] = [];
-    const events: TraceEvent[] = [];
-    const losses: TraceLoss[] = [];
+  async read(path: string, _options: ReadOptions = {}): Promise<Toast> {
+    const turns: ToastTurn[] = [];
+    const events: ToastEvent[] = [];
+    const losses: ToastLoss[] = [];
 
     let header: { id: string; timestamp: string; cwd: string; version?: number; parentSession?: string } | null = null;
     const fingerprint = { agent: AGENT, model: undefined as string | undefined, provider: undefined as string | undefined };
@@ -158,14 +182,14 @@ export const piAdapter: AgentAdapter = {
       // Conversation turn.
       if (raw.type === "message" && raw.message) {
         const msg = raw.message;
-        const role: TraceRole =
+        const role: ToastRole =
           msg.role === "toolResult" || msg.role === "tool" ? "tool" :
           msg.role === "assistant" ? "assistant" :
           msg.role === "system" ? "system" :
           msg.role === "developer" ? "developer" :
           "user";
 
-        const content: TraceContentBlock[] = [];
+        const content: ToastContentBlock[] = [];
         for (let i = 0; i < (msg.content || []).length; i++) {
           const c = msg.content[i];
           if (c.type === "text" && typeof c.text === "string") {
@@ -183,7 +207,7 @@ export const piAdapter: AgentAdapter = {
               id: sanitizeToolId(c.id),
               rawId: typeof c.id === "string" ? c.id : undefined,
               name: String(c.name || "unknown"),
-              arguments: (c.arguments || {}) as Record<string, unknown>,
+              arguments: c.arguments ?? {},
             });
           } else if (role === "tool" && c.type === "text") {
             // Text inside a toolResult role is the tool's output.
@@ -198,7 +222,7 @@ export const piAdapter: AgentAdapter = {
         if (role === "tool") {
           const textBlocks = content.filter((b): b is { type: "text"; text: string; metadata?: Record<string, unknown> } => b.type === "text");
           const toolId = sanitizeToolId(msg.toolCallId);
-          const resultBlock: TraceContentBlock = {
+          const resultBlock: ToastContentBlock = {
             type: "tool_result",
             toolCallId: toolId,
             rawToolCallId: typeof msg.toolCallId === "string" ? msg.toolCallId : undefined,
@@ -218,7 +242,7 @@ export const piAdapter: AgentAdapter = {
           continue;
         }
 
-        const turn: TraceTurn = {
+        const turn: ToastTurn = {
           id: String(raw.id || `turn-${lineNo}`),
           parentId: raw.parentId ?? null,
           role,
@@ -252,7 +276,7 @@ export const piAdapter: AgentAdapter = {
 
     if (!header) throw new Error(`pi session header not found in ${path}`);
 
-    const trace: Trace = {
+    const trace: Toast = {
       traceVersion: 1,
       id: header.id,
       cwd: header.cwd,
@@ -272,13 +296,37 @@ export const piAdapter: AgentAdapter = {
     return trace;
   },
 
-  async write(trace: Trace, options: WriteOptions = {}): Promise<WriteResult> {
-    const sessionId = options.sessionId ?? trace.id ?? randomUUID();
-    const cwd = trace.cwd ?? homedir();
-    const createdAt = trace.createdAt ?? new Date().toISOString();
+  validateWrite(trace: Toast, options: WriteOptions = {}) {
+    return validateToastForCompat(AGENT, trace, piCompat, options);
+  },
+
+  async write(trace: Toast, options: WriteOptions = {}): Promise<WriteResult> {
+    const preflight = validateToastForCompat(AGENT, trace, piCompat, options);
+    throwIfStrictValidationFails(AGENT, options, preflight);
+
+    const { trace: preparedTrace, losses: compactionLosses } = compactToastForWrite(AGENT, trace, piCompat, options);
+    const importedEvents = preparedTrace.events.filter((ev) => !(ev.type === "model_change" || ev.type === "thinking_level_change" || ev.type === "custom" || ev.type === "session_info"));
+    const traceWithImportedEvents = importedEvents.length > 0
+      ? prependImportedContextTurn(
+          preparedTrace,
+          makeImportedContextTurn(
+            `imported-events-${randomUUID()}`,
+            preparedTrace.createdAt ?? new Date().toISOString(),
+            importedEvents.map((event) => makeImportedEventNote(event)),
+            AGENT,
+          ),
+        )
+      : preparedTrace;
+    const sessionId = options.sessionId ?? traceWithImportedEvents.id ?? randomUUID();
+    const cwd = traceWithImportedEvents.cwd ?? homedir();
+    const createdAt = traceWithImportedEvents.createdAt ?? new Date().toISOString();
     const target = options.targetPath ?? defaultPiSessionPath(cwd, sessionId, createdAt);
 
     const lines: Record<string, unknown>[] = [];
+    const losses: ToastLoss[] = [...validationResultToLosses(preflight), ...compactionLosses];
+    if (importedEvents.length > 0) {
+      losses.push(makeLoss("info", "events[]", `${importedEvents.length} event(s) preserved as imported context for pi`));
+    }
     // Header
     lines.push({
       type: "session",
@@ -286,41 +334,42 @@ export const piAdapter: AgentAdapter = {
       id: sessionId,
       timestamp: createdAt,
       cwd,
-      ...(trace.parentTraceId ? { parentSession: trace.parentTraceId } : {}),
+      ...(traceWithImportedEvents.parentTraceId ? { parentSession: traceWithImportedEvents.parentTraceId } : {}),
     });
 
-    const losses: TraceLoss[] = [];
-    for (let i = 0; i < trace.turns.length; i++) {
-      const turn = trace.turns[i];
+    for (let i = 0; i < traceWithImportedEvents.turns.length; i++) {
+      const turn = traceWithImportedEvents.turns[i];
       const msg: Record<string, unknown> = { role: roleToPi(turn.role) };
       msg.content = [];
 
       if (turn.role === "tool") {
         // Pi carries the linkage on the message.
         const result = turn.content.find((b) => b.type === "tool_result") as
-          | { type: "tool_result"; toolCallId: string; rawToolCallId?: string; toolName?: string; content: TraceContentBlock[]; isError?: boolean }
+          | { type: "tool_result"; toolCallId: string; rawToolCallId?: string; toolName?: string; content: ToastContentBlock[]; isError?: boolean }
           | undefined;
         if (result) {
           msg.toolCallId = result.rawToolCallId ?? result.toolCallId;
           if (result.toolName) msg.toolName = result.toolName;
           if (result.isError) msg.isError = true;
-          (msg.content as Record<string, unknown>[]) = result.content
-            .filter((b) => b.type === "text")
-            .map((b) => ({ type: "text", text: (b as { text: string }).text }));
+          const rendered = joinRenderableText(result.content);
+          (msg.content as Record<string, unknown>[]) = rendered ? [{ type: "text", text: rendered }] : [];
         }
       } else {
         for (const b of turn.content) {
-          if (b.type === "text") (msg.content as Record<string, unknown>[]).push({ type: "text", text: b.text });
-          else if (b.type === "thinking") {
+          if (b.type === "text" || b.type === "note") {
+            const text = renderContentBlockAsText(b);
+            if (text) (msg.content as Record<string, unknown>[]).push({ type: "text", text });
+          } else if (b.type === "thinking") {
             const out: Record<string, unknown> = { type: "thinking", thinking: b.text };
             if (b.signature) out.thinkingSignature = b.signature;
             (msg.content as Record<string, unknown>[]).push(out);
           } else if (b.type === "tool_call") {
+            const args = piToolArguments(b.arguments, losses, `turns[${i}].content`);
             (msg.content as Record<string, unknown>[]).push({
               type: "toolCall",
               id: b.rawId ?? b.id,
               name: b.name,
-              arguments: b.arguments,
+              arguments: args,
             });
           } else if (b.type === "tool_result") {
             // A tool_result block inside a non-tool role — unusual. Demote to text.
@@ -334,6 +383,7 @@ export const piAdapter: AgentAdapter = {
         if (turn.provider) msg.provider = turn.provider;
         if (turn.stopReason) msg.stopReason = turn.stopReason;
         if (turn.usage) msg.usage = piUsageFromTrace(turn.usage);
+        else if (turn.role === "assistant") msg.usage = piUsageFromTrace(emptyToastUsage());
       }
 
       lines.push({
@@ -346,13 +396,11 @@ export const piAdapter: AgentAdapter = {
     }
 
     // Non-conversation events — preserve types we recognize.
-    for (const ev of trace.events) {
+    for (const ev of traceWithImportedEvents.events) {
       if (ev.type === "model_change" || ev.type === "thinking_level_change" || ev.type === "custom" || ev.type === "session_info") {
         // Passthrough via the original value shape when possible.
         const v = ev.value as Record<string, unknown> | undefined;
         lines.push(v && typeof v === "object" ? v : { type: ev.type, id: ev.id, timestamp: ev.timestamp, value: ev.value });
-      } else {
-        losses.push(makeLoss("info", `events[]`, `skipped non-pi event type "${ev.type}"`));
       }
     }
 
@@ -360,18 +408,18 @@ export const piAdapter: AgentAdapter = {
     await writeFile(target, lines.map((l) => JSON.stringify(l)).join("\n") + "\n", "utf-8");
 
     return {
-      sourceAgent: trace.source?.agent,
+      sourceAgent: traceWithImportedEvents.source?.agent,
       targetAgent: AGENT,
       target,
       sessionId,
       cwd,
-      turns: trace.turns.length,
-      events: trace.events.length,
-      losses: [...trace.losses, ...losses].map((l) => ({ severity: l.severity, path: l.path, reason: l.reason })),
+      turns: traceWithImportedEvents.turns.length,
+      events: traceWithImportedEvents.events.length,
+      losses: summarizeWriteLosses(traceWithImportedEvents, losses),
     };
   },
 
-  defaultPath(trace: Trace, options: WriteOptions = {}): string {
+  defaultPath(trace: Toast, options: WriteOptions = {}): string {
     const sessionId = options.sessionId ?? trace.id ?? randomUUID();
     return defaultPiSessionPath(trace.cwd ?? homedir(), sessionId, trace.createdAt);
   },
@@ -379,7 +427,7 @@ export const piAdapter: AgentAdapter = {
 
 // ------- tiny mappers -------
 
-function roleToPi(r: TraceRole): string {
+function roleToPi(r: ToastRole): string {
   if (r === "tool") return "toolResult";
   if (r === "assistant") return "assistant";
   if (r === "system") return "system";
@@ -387,7 +435,7 @@ function roleToPi(r: TraceRole): string {
   return "user";
 }
 
-function mapPiStopReason(s?: string): TraceTurn["stopReason"] {
+function mapPiStopReason(s?: string): ToastTurn["stopReason"] {
   if (!s) return undefined;
   if (s === "toolUse") return "tool_use";
   if (s === "length") return "length";
@@ -397,7 +445,7 @@ function mapPiStopReason(s?: string): TraceTurn["stopReason"] {
   return "unknown";
 }
 
-function mapPiUsage(u?: any): TraceUsage | undefined {
+function mapPiUsage(u?: any): ToastUsage | undefined {
   if (!u) return undefined;
   return {
     inputTokens: u.input,
@@ -409,22 +457,32 @@ function mapPiUsage(u?: any): TraceUsage | undefined {
   };
 }
 
-function piUsageFromTrace(u: TraceUsage): Record<string, unknown> {
+function emptyToastUsage(): ToastUsage {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+  };
+}
+
+function piUsageFromTrace(u: ToastUsage): Record<string, unknown> {
   return {
     input: u.inputTokens ?? 0,
     output: u.outputTokens ?? 0,
     cacheRead: u.cacheReadTokens ?? 0,
     cacheWrite: u.cacheWriteTokens ?? 0,
-    totalTokens: u.totalTokens ?? 0,
+    totalTokens: u.totalTokens ?? ((u.inputTokens ?? 0) + (u.outputTokens ?? 0) + (u.cacheReadTokens ?? 0) + (u.cacheWriteTokens ?? 0)),
     cost: { total: u.costUsd ?? 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   };
 }
 
-export function sanitizeToolId(raw: unknown): string {
-  if (typeof raw === "string" && /^[a-zA-Z0-9_-]+$/.test(raw) && raw.length <= 64) return raw;
-  if (typeof raw === "string") {
-    const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
-    if (cleaned) return cleaned;
-  }
-  return "call_" + randomUUID().replace(/-/g, "");
+function piToolArguments(
+  input: unknown,
+  losses: ToastLoss[],
+  path: string,
+): Record<string, unknown> {
+  return coerceToolInputObject("pi", input, losses, path);
 }

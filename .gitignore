@@ -1,6 +1,13 @@
 node_modules/
 dist/
 dist-tests/
+pi-mono-sessions/
+.agents/
+.claude/
+.pi/
+.windsurf/
+skills-lock.json
+*.tgz
 *.log
 .DS_Store
 .env

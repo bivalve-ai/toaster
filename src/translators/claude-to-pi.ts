@@ -1,5 +1,5 @@
 // Backwards-compat wrapper. Real logic now lives in src/adapters/pi.ts (via
-// Trace) + src/translate.ts. Old imports still work.
+// Toast) + src/translate.ts. Old imports still work.
 
 import type { WriteResult } from "../adapters/types.js";
 import { translate } from "../translate.js";
@@ -26,7 +26,7 @@ export async function migrateClaudeSessionToPi(sourcePath: string): Promise<{
 // a thin re-export over the adapter read so legacy code paths compile.
 import { piAdapter } from "../adapters/pi.js";
 export async function normalizeClaudeJSONL(filePath: string) {
-  // Read claude and convert the Trace to something roughly shaped like the old
+  // Read claude and convert the Toast to something roughly shaped like the old
   // NormalizedPiSession — for tests that inspect role names etc.
   const { claudeAdapter } = await import("../adapters/claude.js");
   const trace = await claudeAdapter.read(filePath);

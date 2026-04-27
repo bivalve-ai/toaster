@@ -1,14 +1,17 @@
 // Adapter registry. Add new agents here and they're wired into `translate()`.
-import type { AgentKind } from "../schemas/trace.js";
+import type { AgentKind } from "../schemas/toast.js";
 import type { AgentAdapter } from "./types.js";
 import { piAdapter } from "./pi.js";
 import { claudeAdapter } from "./claude.js";
+import { codexAdapter } from "./codex.js";
+import { opencodeAdapter } from "./opencode.js";
 
 export const adapters: Record<AgentKind, AgentAdapter> = {
   pi: piAdapter,
   claude: claudeAdapter,
-  // codex: codexAdapter  // next
-} as unknown as Record<AgentKind, AgentAdapter>;
+  codex: codexAdapter,
+  opencode: opencodeAdapter,
+} as Record<AgentKind, AgentAdapter>;
 
 export function getAdapter(kind: AgentKind): AgentAdapter {
   const a = adapters[kind];
@@ -26,4 +29,4 @@ export async function detectAgent(path: string): Promise<AgentKind | null> {
   return null;
 }
 
-export { piAdapter, claudeAdapter };
+export { piAdapter, claudeAdapter, codexAdapter, opencodeAdapter };
