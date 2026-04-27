@@ -30,6 +30,8 @@ Run the checks:
 npm run check
 ```
 
+For the current coverage map and agent-to-end smoke flow, see [docs/testing.md](./docs/testing.md).
+
 Or run the same steps manually:
 
 ```bash

@@ -12,8 +12,9 @@ Read these files first, in order:
 2. [`STANDARD.md`](./STANDARD.md) — short agent-readable TOAST standard summary
 3. [`spec/toast-v0.1.md`](./spec/toast-v0.1.md) — canonical detailed format spec
 4. [`docs/adapters.md`](./docs/adapters.md) — adapter implementation guide
-5. [`CONTRIBUTING.md`](./CONTRIBUTING.md) — contribution policy
-6. [`SECURITY.md`](./SECURITY.md) — privacy/security boundaries
+5. [`docs/testing.md`](./docs/testing.md) — test philosophy and A2E smoke flow
+6. [`CONTRIBUTING.md`](./CONTRIBUTING.md) — contribution policy
+7. [`SECURITY.md`](./SECURITY.md) — privacy/security boundaries
 
 ## Commands
 

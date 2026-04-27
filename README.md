@@ -13,7 +13,7 @@ Current native session sources:
 - Codex CLI
 - OpenCode export JSON
 
-The standard summary lives at [STANDARD.md](./STANDARD.md). The canonical detailed format spec lives at [spec/toast-v0.1.md](./spec/toast-v0.1.md). Adapter authors should start with [docs/adapters.md](./docs/adapters.md).
+The standard summary lives at [STANDARD.md](./STANDARD.md). The canonical detailed format spec lives at [spec/toast-v0.1.md](./spec/toast-v0.1.md). Adapter authors should start with [docs/adapters.md](./docs/adapters.md). Testing philosophy and A2E guidance live in [docs/testing.md](./docs/testing.md).
 
 ## Privacy / local-first
 
@@ -290,6 +290,8 @@ Before sharing a branch or opening a PR, run the full local check:
 ```bash
 npm run check
 ```
+
+See [docs/testing.md](./docs/testing.md) for the test philosophy, current coverage, and A2E smoke flow.
 
 `npm pack` runs a clean build via `prepack`, so the tarball does not include stale build output.
 
