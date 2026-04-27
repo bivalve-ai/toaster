@@ -45,6 +45,14 @@ The purpose is to catch Norman doors: places where the software technically work
 
 A good A2E run uses a clean temp project, an installed package or packed tarball, and a temporary TOAST library. The agent should use only `README.md`, `toaster --help`, and command output.
 
+Run the optional cleanroom harness with:
+
+```bash
+npm run a2e:cleanroom
+```
+
+It is not part of normal CI because it depends on local session stores, provider auth, model availability, and quota. The harness lives in [`a2e/`](../a2e/README.md).
+
 The minimal flow is:
 
 ```bash

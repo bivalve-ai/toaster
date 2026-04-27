@@ -4,7 +4,7 @@
   "description": "Local-first universal session store for AI agents, powered by TOAST.",
   "type": "module",
   "bin": {
-    "toaster": "./dist/cli/index.js"
+    "toaster": "dist/cli/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,17 +18,24 @@
     "dist",
     "README.md",
     "STANDARD.md",
-    "AGENTS.md",
+    "CHANGELOG.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
+    "SUPPORT.md",
+    "AGENTS.md",
+    "docs",
     "spec"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "clean": "rm -rf dist dist-tests",
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "tsc -p tsconfig.test.json && node --test dist-tests/tests/*.test.js",
     "check": "npm run build && npm test && npm pack --dry-run",
+    "a2e:cleanroom": "node a2e/run-cleanroom.mjs",
     "prepack": "npm run clean && npm run build",
     "toaster": "tsc && node dist/cli/index.js"
   },
