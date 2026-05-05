@@ -174,11 +174,13 @@ export const opencodeAdapter: AgentAdapter = {
     const fingerprints: Array<{ agent: typeof AGENT; version?: string; model?: string; provider?: string }> = [];
 
     let lastTurnId: string | null = null;
+    const seenFingerprints = new Set<string>();
 
     for (let i = 0; i < raw.messages.length; i++) {
       const message = raw.messages[i];
       const msgInfo = message.info;
       const role = msgInfo.role === "assistant" ? "assistant" : "user";
+      const pendingToolTurns: ToastTurn[] = [];
       const turn: ToastTurn = {
         id: String(msgInfo.id ?? `turn-${i}`),
         parentId: role === "assistant" ? (msgInfo.parentID ?? lastTurnId) : lastTurnId,
@@ -240,13 +242,13 @@ export const opencodeAdapter: AgentAdapter = {
             name: String(part.tool ?? "unknown"),
             arguments: part.state?.input ?? {},
             metadata: {
-              status: part.state?.status,
-              ...(isPlainObject(part.metadata) ? { metadata: part.metadata } : {}),
+              ...(isPlainObject(part.metadata) ? { partMetadata: part.metadata } : {}),
+              ...(typeof part.id === "string" ? { partId: part.id } : {}),
             },
           });
 
           if (part.state?.status === "completed" || part.state?.status === "error") {
-            turns.push({
+            pendingToolTurns.push({
               id: `${turn.id}:tool:${j}`,
               parentId: turn.id,
               role: "tool",
@@ -293,12 +295,19 @@ export const opencodeAdapter: AgentAdapter = {
       }
 
       turns.push(turn);
+      for (const tt of pendingToolTurns) turns.push(tt);
       lastTurnId = turn.id;
 
-      const provider = turn.provider;
-      const model = turn.model;
-      if (model || provider) {
-        fingerprints.push({ agent: AGENT, version: typeof info.version === "string" ? info.version : undefined, model, provider });
+      if (role === "assistant") {
+        const provider = turn.provider;
+        const model = turn.model;
+        if (model || provider) {
+          const key = `${provider ?? ""}::${model ?? ""}`;
+          if (!seenFingerprints.has(key)) {
+            seenFingerprints.add(key);
+            fingerprints.push({ agent: AGENT, version: typeof info.version === "string" ? info.version : undefined, model, provider });
+          }
+        }
       }
     }
 
@@ -333,17 +342,36 @@ export const opencodeAdapter: AgentAdapter = {
     throwIfStrictValidationFails(AGENT, options, preflight);
 
     const { trace: preparedTrace, losses: compactionLosses } = compactToastForWrite(AGENT, trace, opencodeCompat, options);
-    const traceWithImportedEvents = preparedTrace.events.length > 0
+
+    // Group events by the native message they originally belonged to, so we can
+    // re-emit step-start / step-finish / unknown parts as native parts on that
+    // message instead of flattening them into a synthetic user turn.
+    const eventsByParent = new Map<string, ToastEvent[]>();
+    const orphanEvents: ToastEvent[] = [];
+    for (const event of preparedTrace.events) {
+      const parent = (event.provenance?.agent === AGENT && typeof event.provenance.rawParentId === "string")
+        ? event.provenance.rawParentId
+        : null;
+      if (parent) {
+        const list = eventsByParent.get(parent) ?? [];
+        list.push(event);
+        eventsByParent.set(parent, list);
+      } else {
+        orphanEvents.push(event);
+      }
+    }
+
+    const traceWithImportedEvents = orphanEvents.length > 0
       ? prependImportedContextTurn(
-          preparedTrace,
+          { ...preparedTrace, events: orphanEvents },
           makeImportedContextTurn(
             makeMessageId(),
             preparedTrace.createdAt ?? new Date().toISOString(),
-            preparedTrace.events.map((event) => makeImportedEventNote(event)),
+            orphanEvents.map((event) => makeImportedEventNote(event)),
             AGENT,
           ),
         )
-      : preparedTrace;
+      : { ...preparedTrace, events: [] };
 
     const sessionId = makeSessionId(options.sessionId ?? traceWithImportedEvents.id);
     const target = options.targetPath ?? defaultOpencodePath(traceWithImportedEvents, sessionId);
@@ -352,8 +380,32 @@ export const opencodeAdapter: AgentAdapter = {
     const timeCreated = new Date(createdAt).getTime();
 
     const losses: ToastLoss[] = [...validationResultToLosses(preflight), ...compactionLosses];
-    if (preparedTrace.events.length > 0) {
-      losses.push(makeLoss("info", "events[]", `${preparedTrace.events.length} event(s) preserved as imported context for opencode`));
+    if (orphanEvents.length > 0) {
+      losses.push(makeLoss("info", "events[]", `${orphanEvents.length} orphan event(s) preserved as imported context for opencode`));
+    }
+
+    // Build tool-result lookup so a single native tool part can carry both
+    // input and output, matching opencode's actual shape.
+    const toolResults = new Map<string, { turn: ToastTurn; block: any }>();
+    const consumedToolTurnIds = new Set<string>();
+    const knownToolCallIds = new Set<string>();
+    for (const t of traceWithImportedEvents.turns) {
+      for (const block of t.content) {
+        if ((block as any).type === "tool_call") knownToolCallIds.add((block as any).id);
+      }
+    }
+    for (const t of traceWithImportedEvents.turns) {
+      if (t.role !== "tool") continue;
+      for (const block of t.content) {
+        if ((block as any).type === "tool_result") {
+          toolResults.set((block as any).toolCallId, { turn: t, block });
+          // Pre-mark tool turns as consumed if a matching tool_call exists
+          // anywhere in the trace, regardless of turn order in the array.
+          if (knownToolCallIds.has((block as any).toolCallId)) {
+            consumedToolTurnIds.add(t.id);
+          }
+        }
+      }
     }
 
     const idMap = new Map<string, string>();
@@ -361,6 +413,7 @@ export const opencodeAdapter: AgentAdapter = {
 
     for (let i = 0; i < traceWithImportedEvents.turns.length; i++) {
       const turn = traceWithImportedEvents.turns[i];
+      if (turn.role === "tool" && consumedToolTurnIds.has(turn.id)) continue;
       const messageId = makeMessageId(turn.id);
       idMap.set(turn.id, messageId);
       const timestamp = turn.timestamp ? new Date(turn.timestamp).getTime() : timeCreated + i;
@@ -391,22 +444,67 @@ export const opencodeAdapter: AgentAdapter = {
             continue;
           }
           if (block.type === "tool_call") {
+            const result = toolResults.get(block.id);
+            const blockMeta = isPlainObject(block.metadata) ? block.metadata : {};
+            const nativePartId = typeof blockMeta.partId === "string" ? blockMeta.partId : undefined;
+            const partMeta = isPlainObject(blockMeta.partMetadata) ? blockMeta.partMetadata : undefined;
+            const input = coerceToolInputObject("opencode", block.arguments, losses, `turns[${i}].content[${j}]`);
+            let state: Record<string, unknown>;
+            if (result) {
+              consumedToolTurnIds.add(result.turn.id);
+              const resultBlock = result.block;
+              const endTime = result.turn.timestamp ? new Date(result.turn.timestamp).getTime() : timestamp;
+              if (resultBlock.isError) {
+                state = {
+                  status: "error",
+                  input,
+                  error: joinRenderableText(resultBlock.content),
+                  time: { start: timestamp, end: endTime },
+                  metadata: resultBlock.metadata,
+                };
+              } else {
+                state = {
+                  status: "completed",
+                  input,
+                  output: joinRenderableText(resultBlock.content),
+                  title: resultBlock.toolName ?? block.name,
+                  time: { start: timestamp, end: endTime },
+                  metadata: resultBlock.metadata ?? {},
+                };
+              }
+            } else {
+              state = {
+                status: "pending",
+                input,
+                raw: JSON.stringify(block.arguments ?? {}),
+              };
+            }
             parts.push({
-              id: partId,
+              id: nativePartId ?? partId,
               sessionID: sessionId,
               messageID: messageId,
               type: "tool",
               callID: block.id,
               tool: block.name,
-              state: {
-                status: "pending",
-                input: coerceToolInputObject("opencode", block.arguments, losses, `turns[${i}].content[${j}]`),
-                raw: JSON.stringify(block.arguments ?? {}),
-              },
-              metadata: isPlainObject(block.metadata) ? block.metadata : undefined,
+              state,
+              metadata: partMeta,
             });
             continue;
           }
+        }
+
+        // Re-emit any opencode events (step-start / step-finish / unknown parts)
+        // that originally belonged to this assistant message.
+        const ownEvents = (turn.provenance?.agent === AGENT && typeof turn.provenance.rawId === "string")
+          ? eventsByParent.get(turn.provenance.rawId) ?? []
+          : [];
+        for (const event of ownEvents) {
+          const value = isPlainObject(event.value) ? { ...event.value } : { type: event.type };
+          // Repoint to the current session/message so the part is internally consistent.
+          (value as any).sessionID = sessionId;
+          (value as any).messageID = messageId;
+          if (typeof (value as any).type !== "string") (value as any).type = event.type;
+          parts.push(value as Record<string, unknown>);
         }
 
         const usage = usageToOpencode(turn.usage);
@@ -495,7 +593,6 @@ export const opencodeAdapter: AgentAdapter = {
           time: { created: timestamp },
           format: { type: "text" },
           agent: String(turn.metadata.agent ?? DEFAULT_AGENT),
-          model,
           system: typeof turn.metadata.system === "string" ? turn.metadata.system : undefined,
           tools: typeof turn.metadata.tools === "object" ? turn.metadata.tools : undefined,
           summary: isPlainObject(turn.metadata.summary) ? turn.metadata.summary : undefined,
