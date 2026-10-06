@@ -156,3 +156,15 @@ test("pi writer: assistant messages carry the api pi's own model catalog expects
     assert.equal(message.api, model.api, `${message.provider}/${message.model}`);
   }
 });
+
+test("pi writer: messages carry pi-ai's numeric timestamp (ms since epoch)", async () => {
+  const trace = await readToastArtifact(fixture("toast-assistant-api.toast.json"));
+  const { dir, target } = await tempTarget();
+  await piAdapter.write(trace, { targetPath: target });
+  const { messages } = loadInPi(dir, target);
+  assert.equal(messages.length, trace.turns.length);
+  assert.deepEqual(
+    messages.map((message) => message.timestamp),
+    trace.turns.map((turn) => Date.parse(turn.timestamp!)),
+  );
+});
