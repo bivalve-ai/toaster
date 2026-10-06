@@ -188,6 +188,7 @@ export const piAdapter: AgentAdapter = {
           msg.role === "assistant" ? "assistant" :
           msg.role === "system" ? "system" :
           msg.role === "developer" ? "developer" :
+          msg.role === "custom" && msg.customType === PI_DEVELOPER_CUSTOM_TYPE ? "developer" :
           "user";
 
         const content: ToastContentBlock[] = [];
@@ -359,6 +360,10 @@ export const piAdapter: AgentAdapter = {
       const turnLine = turn.provenance?.line;
       if (typeof turnLine === "number") flushEventsBefore(turnLine);
       const msg: Record<string, unknown> = { role: roleToPi(turn.role) };
+      if (turn.role === "developer") {
+        msg.customType = PI_DEVELOPER_CUSTOM_TYPE;
+        msg.display = true;
+      }
       msg.content = [];
 
       if (turn.role === "tool") {
@@ -511,11 +516,17 @@ function piContentBlocks(content: unknown): any[] {
   return Array.isArray(content) ? content : [];
 }
 
+// pi has no developer role: convertToLlm drops unknown roles, so a
+// "developer" message never reached the model. A custom message (pi's
+// extension-injected context) is sent as user-role content and shown in the
+// TUI; the customType lets read() restore the developer role.
+const PI_DEVELOPER_CUSTOM_TYPE = "toaster.developer";
+
 function roleToPi(r: ToastRole): string {
   if (r === "tool") return "toolResult";
   if (r === "assistant") return "assistant";
   if (r === "system") return "system";
-  if (r === "developer") return "developer";
+  if (r === "developer") return "custom";
   return "user";
 }
 
