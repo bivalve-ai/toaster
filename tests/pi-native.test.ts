@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { copyFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,12 +30,14 @@ async function tempTarget(): Promise<{ dir: string; target: string }> {
 }
 
 /** Open a written session with pi's SessionManager and rebuild its context. */
-function loadInPi(dir: string, target: string): { messages: PiMessage[]; llm: PiMessage[] } {
+function loadInPi(dir: string, target: string) {
   const manager = SessionManager.open(target, join(dir, "pi-sessions"));
   const context = manager.buildSessionContext();
   return {
     messages: context.messages as unknown as PiMessage[],
     llm: convertToLlm(context.messages) as unknown as PiMessage[],
+    model: context.model,
+    thinkingLevel: context.thinkingLevel,
   };
 }
 
@@ -167,4 +169,43 @@ test("pi writer: messages carry pi-ai's numeric timestamp (ms since epoch)", asy
     messages.map((message) => message.timestamp),
     trace.turns.map((turn) => Date.parse(turn.timestamp!)),
   );
+});
+
+// ---------- entry tree: pi's leaf must reach every turn ----------
+
+function conversation(messages: PiMessage[]): string[] {
+  return messages
+    .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "toolResult")
+    .map((message) => `${message.role}: ${textOf(message)}`);
+}
+
+test("pi -> pi: pi rebuilds the same conversation, model and thinking level as the source", async () => {
+  // What pi itself sees in the source file (opened from a temp copy).
+  const source = await tempTarget();
+  await copyFile(fixture("pi-session-entries.jsonl"), source.target);
+  const expected = loadInPi(source.dir, source.target);
+  assert.equal(conversation(expected.messages).length, 4);
+
+  const actual = await translatePiFixtureThroughPi("pi-session-entries.jsonl");
+  assert.deepEqual(conversation(actual.messages), conversation(expected.messages));
+  assert.deepEqual(actual.model, expected.model);
+  assert.equal(actual.thinkingLevel, expected.thinkingLevel);
+});
+
+test("claude -> pi: a split assistant message does not cut pi's context short", async () => {
+  // Claude Code writes one JSONL entry per assistant content block; toaster
+  // coalesces them into one turn, so the tool result's parentUuid names an
+  // entry that has no pi counterpart.
+  const { dir, target } = await tempTarget();
+  await translate("pi", fixture("claude-split-assistant.jsonl"), { from: "claude", targetPath: target });
+  const { messages } = loadInPi(dir, target);
+  assert.deepEqual(conversation(messages), [
+    "user: what is in this repo?",
+    "assistant: Let me look.",
+    "toolResult: README.md\n",
+    "assistant: Just a README.",
+  ]);
+  const call = (messages[1].content as PiMessage[]).find((block) => block.type === "toolCall");
+  assert.equal(messages[1].stopReason, "toolUse");
+  assert.equal(messages[2].toolCallId, call?.id);
 });

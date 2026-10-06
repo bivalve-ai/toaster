@@ -31,6 +31,7 @@ import type {
 import {
   compactToastForWrite,
   coerceToolInputObject,
+  isPlainObject,
   joinRenderableText,
   makeImportedContextTurn,
   makeImportedEventNote,
@@ -309,7 +310,7 @@ export const piAdapter: AgentAdapter = {
     throwIfStrictValidationFails(AGENT, options, preflight);
 
     const { trace: preparedTrace, losses: compactionLosses } = compactToastForWrite(AGENT, trace, piCompat, options);
-    const importedEvents = preparedTrace.events.filter((ev) => !(ev.type === "model_change" || ev.type === "thinking_level_change" || ev.type === "custom" || ev.type === "session_info"));
+    const importedEvents = preparedTrace.events.filter((ev) => !isPiPassthroughEvent(ev));
     const traceWithImportedEvents = importedEvents.length > 0
       ? prependImportedContextTurn(
           preparedTrace,
@@ -326,23 +327,37 @@ export const piAdapter: AgentAdapter = {
     const createdAt = traceWithImportedEvents.createdAt ?? new Date().toISOString();
     const target = options.targetPath ?? defaultPiSessionPath(cwd, sessionId, createdAt);
 
-    const lines: Record<string, unknown>[] = [];
     const losses: ToastLoss[] = [...validationResultToLosses(preflight), ...compactionLosses];
     if (importedEvents.length > 0) {
       losses.push(makeLoss("info", "events[]", `${importedEvents.length} event(s) preserved as imported context for pi`));
     }
-    // Header
-    lines.push({
+    const header = {
       type: "session",
       version: 3,
       id: sessionId,
       timestamp: createdAt,
       cwd,
       ...(traceWithImportedEvents.parentTraceId ? { parentSession: traceWithImportedEvents.parentTraceId } : {}),
-    });
+    };
+
+    // pi-native events we pass through (model_change, ...) go back between the
+    // turns they sat between in the source, so the last line, which pi takes
+    // as the leaf, is where the source conversation ended.
+    const entries: Record<string, unknown>[] = [];
+    const passthrough = traceWithImportedEvents.events.filter(isPiPassthroughEvent);
+    let nextEvent = 0;
+    const flushEventsBefore = (line: number) => {
+      while (nextEvent < passthrough.length) {
+        const eventLine = passthrough[nextEvent].provenance?.line;
+        if (typeof eventLine !== "number" || eventLine >= line) break;
+        entries.push(piEventEntry(passthrough[nextEvent++]));
+      }
+    };
 
     for (let i = 0; i < traceWithImportedEvents.turns.length; i++) {
       const turn = traceWithImportedEvents.turns[i];
+      const turnLine = turn.provenance?.line;
+      if (typeof turnLine === "number") flushEventsBefore(turnLine);
       const msg: Record<string, unknown> = { role: roleToPi(turn.role) };
       msg.content = [];
 
@@ -399,7 +414,7 @@ export const piAdapter: AgentAdapter = {
       const messageTimestamp = Date.parse(entryTimestamp);
       if (turn.role !== "system" && Number.isFinite(messageTimestamp)) msg.timestamp = messageTimestamp;
 
-      lines.push({
+      entries.push({
         type: "message",
         id: turn.id,
         parentId: turn.parentId ?? null,
@@ -407,15 +422,13 @@ export const piAdapter: AgentAdapter = {
         message: msg,
       });
     }
+    while (nextEvent < passthrough.length) entries.push(piEventEntry(passthrough[nextEvent++]));
 
-    // Non-conversation events — preserve types we recognize.
-    for (const ev of traceWithImportedEvents.events) {
-      if (ev.type === "model_change" || ev.type === "thinking_level_change" || ev.type === "custom" || ev.type === "session_info") {
-        // Passthrough via the original value shape when possible.
-        const v = ev.value as Record<string, unknown> | undefined;
-        lines.push(v && typeof v === "object" ? v : { type: ev.type, id: ev.id, timestamp: ev.timestamp, value: ev.value });
-      }
+    const relinked = linkPiEntries(entries, traceWithImportedEvents.events);
+    if (relinked > 0) {
+      losses.push(makeLoss("info", "turns[].parentId", `${relinked} entr${relinked === 1 ? "y" : "ies"} re-parented so pi's leaf reaches every turn`));
     }
+    const lines: Record<string, unknown>[] = [header, ...entries];
 
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, lines.map((l) => JSON.stringify(l)).join("\n") + "\n", "utf-8");
@@ -437,6 +450,55 @@ export const piAdapter: AgentAdapter = {
     return defaultPiSessionPath(trace.cwd ?? homedir(), sessionId, trace.createdAt);
   },
 };
+
+// ------- entry tree -------
+
+/** Event types the writer emits as pi entries; all others become imported context. */
+function isPiPassthroughEvent(ev: ToastEvent): boolean {
+  return ev.type === "model_change" || ev.type === "thinking_level_change" || ev.type === "custom" || ev.type === "session_info";
+}
+
+function piEventEntry(ev: ToastEvent): Record<string, unknown> {
+  // Passthrough via the original value shape when possible (copied: parentId may be relinked).
+  return isPlainObject(ev.value)
+    ? { ...ev.value }
+    : { type: ev.type, id: ev.id, parentId: ev.parentId ?? null, timestamp: ev.timestamp, value: ev.value };
+}
+
+/**
+ * pi rebuilds context by walking parentId up from the last entry and stops at
+ * the first id it can't find. Make every entry point at one written before it.
+ * A parent that wasn't written (an event folded into imported context, a
+ * coalesced Claude chunk, a second root) is resolved through the dropped
+ * event's own parent when the trace recorded one, else it becomes the previous
+ * entry. Returns how many entries changed parent.
+ */
+function linkPiEntries(entries: Record<string, unknown>[], events: ToastEvent[]): number {
+  const droppedParents = new Map<string, string | null>();
+  for (const ev of events) {
+    const raw = isPlainObject(ev.value) ? ev.value : undefined;
+    droppedParents.set(ev.id, ev.parentId ?? (typeof raw?.parentId === "string" ? raw.parentId : null));
+  }
+
+  const written = new Set<string>();
+  let previous: string | null = null;
+  let changed = 0;
+  for (const entry of entries) {
+    const original = typeof entry.parentId === "string" ? entry.parentId : null;
+    let parent = original;
+    const seen = new Set<string>();
+    while (parent !== null && !written.has(parent) && droppedParents.has(parent) && !seen.has(parent)) {
+      seen.add(parent);
+      parent = droppedParents.get(parent) ?? null;
+    }
+    const linked = parent !== null && written.has(parent) ? parent : previous;
+    if (linked !== original) changed++;
+    entry.parentId = linked;
+    previous = String(entry.id);
+    written.add(previous);
+  }
+  return changed;
+}
 
 // ------- tiny mappers -------
 
