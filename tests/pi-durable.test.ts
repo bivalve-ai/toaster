@@ -9,7 +9,8 @@ import { createModels } from "@earendil-works/pi-ai/models";
 import { type ConversationId, createRegistry, Harness } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 
-import { detectAgent, getAdapter, readToast } from "../src/index.js";
+import { detectAgent, getAdapter, readToast, translate } from "../src/index.js";
+import { readFileSync } from "node:fs";
 import type { ToastContentBlock, ToastTurn } from "../src/schemas/toast.js";
 
 // Built by tests/fixtures/pi-durable/build.mjs with pi-durable 1.0.4: 1 = root (tool round, reset), 27 = fork of 1
@@ -92,8 +93,9 @@ test("pi-durable: the root after a reset starts at the handoff; older entries be
   assert.match(normalizeTurns(toast.turns)[0], /^user: Handoff: we were doing arithmetic/);
   assert.ok(toast.losses.some((l) => /before the active context head/.test(l.reason)));
   assert.ok(toast.losses.every((l) => l.severity === "info"));
-  assert.ok(toast.events.length > toast.turns.length, "raw entries are kept as pi-durable.entry events");
-  assert.ok(toast.events.every((e) => e.type === "pi-durable.entry"));
+  const raw = toast.metadata.entries as Array<{ id: number }>;
+  assert.ok(raw.length > toast.turns.length, "every visible raw entry is kept in metadata.entries");
+  assert.deepEqual(toast.events, [], "not as events, which writers would replay as imported context");
 });
 
 test("pi-durable: the fork inherits entries through the fork point and keeps tool linkage", async () => {
@@ -136,4 +138,13 @@ test("pi-durable: list() enumerates the conversations of DOCK_DIR/session.sqlite
 test("pi-durable: write() refuses; the storage belongs to its Harness", async () => {
   const toast = await readToast("pi-durable", `${copy()}#1`);
   await assert.rejects(getAdapter("pi-durable").write(toast), /not supported/);
+});
+
+test("pi-durable: translating to claude starts at the first real message, not a dump of raw entries", async () => {
+  const target = join(mkdtempSync(join(tmpdir(), "toaster-pi-durable-")), "out.jsonl");
+  await translate("claude", `${copy()}#27`, { from: "pi-durable", targetPath: target });
+  const users = readFileSync(target, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((l) => l.type === "user");
+  const first = JSON.stringify(users[0].message.content);
+  assert.match(first, /What is 2\+2\?/);
+  assert.doesNotMatch(readFileSync(target, "utf8"), /pi-durable\.entry/);
 });

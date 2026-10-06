@@ -22,14 +22,16 @@
 //   7. Each assistant's tool results are placed right after it in call order;
 //      a missing result is synthesized as an error; unmatched results drop.
 //
-// Every visible entry is also kept verbatim as an event (`pi-durable.entry`),
-// and every entry the projection left out is recorded as an info loss.
+// Every visible entry is also kept verbatim in `metadata.entries` (not as
+// events: writers turn events into imported context, which would put the raw
+// transcript in front of the target model a second time), and every entry the
+// projection left out is recorded as an info loss.
 
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { Provenance, Toast, ToastContentBlock, ToastEvent, ToastLoss, ToastTurn, ToastUsage } from "../schemas/toast.js";
+import type { Provenance, Toast, ToastContentBlock, ToastLoss, ToastTurn, ToastUsage } from "../schemas/toast.js";
 import type { AgentAdapter, AgentCompat, DiscoveredSession, ReadOptions, WriteResult } from "./types.js";
 import { makeLoss, sanitizeToolId } from "./shared.js";
 
@@ -314,7 +316,6 @@ export const piDurableAdapter: AgentAdapter = {
       const provider = conversationDoc(db, conversationId, "pi.provider");
       const prov = (entry: EntryRecord): Provenance => ({ agent: AGENT, path, rawType: entry.kind, rawId: String(entry.id) });
 
-      const events: ToastEvent[] = entries.map((entry) => ({ id: `entry-${entry.id}`, type: "pi-durable.entry", value: entry, provenance: prov(entry) }));
       const turns: ToastTurn[] = [];
       const seen = new Map<number, number>();
       const fingerprint: { model?: string; provider?: string } = {};
@@ -354,8 +355,8 @@ export const piDurableAdapter: AgentAdapter = {
         source: { agent: AGENT, path },
         agents: [{ agent: AGENT, ...fingerprint }],
         turns,
-        events,
-        metadata: { conversationId, ...(agent ? { agent } : {}) },
+        events: [],
+        metadata: { conversationId, ...(agent ? { agent } : {}), entries },
         losses,
       };
     } finally {
