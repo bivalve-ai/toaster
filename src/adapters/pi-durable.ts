@@ -337,7 +337,7 @@ export const piDurableAdapter: AgentAdapter = {
         } else if (message.role === "assistant") {
           fingerprint.model ??= message.model;
           fingerprint.provider ??= message.provider;
-          turns.push({ ...base, role: "assistant", content: blocks(message.content, path, losses), model: message.model, provider: message.provider, stopReason: stopReason(message.stopReason), usage: usage(message.usage), metadata: { ...base.metadata, ...(message.api ? { api: message.api } : {}) } });
+          turns.push({ ...base, role: "assistant", content: blocks(message.content, path, losses), model: message.model, provider: message.provider, stopReason: stopReason(message.stopReason), usage: usage(message.usage), metadata: { ...base.metadata, ...(message.api ? { piApi: message.api } : {}) } });
         } else if (message.role === "user") {
           turns.push({ ...base, role: "user", content: blocks(message.content, path, losses) });
         } else {
