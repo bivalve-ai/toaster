@@ -32,6 +32,7 @@
   "scripts": {
     "clean": "rm -rf dist dist-tests",
     "build": "tsc",
+    "prepare": "npm run build",
     "dev": "tsc --watch",
     "test": "tsc -p tsconfig.test.json && node --test dist-tests/tests/*.test.js",
     "check": "npm run build && npm test && npm pack --dry-run",
