@@ -190,9 +190,13 @@ export const piAdapter: AgentAdapter = {
           "user";
 
         const content: ToastContentBlock[] = [];
-        for (let i = 0; i < (msg.content || []).length; i++) {
-          const c = msg.content[i];
-          if (c.type === "text" && typeof c.text === "string") {
+        const rawContent = piContentBlocks(msg.content);
+        for (let i = 0; i < rawContent.length; i++) {
+          const c = rawContent[i];
+          if (!c || typeof c !== "object") {
+            content.push({ type: "unknown", value: c });
+            losses.push(makeLoss("info", `turns[${turns.length}].content[${i}]`, "non-object pi content block", c));
+          } else if (c.type === "text" && typeof c.text === "string") {
             content.push({ type: "text", text: c.text });
           } else if (c.type === "thinking" && typeof c.thinking === "string") {
             content.push({
@@ -426,6 +430,15 @@ export const piAdapter: AgentAdapter = {
 };
 
 // ------- tiny mappers -------
+
+/**
+ * pi-ai allows `content: string` on user, system and custom messages. A string
+ * is one text block; anything else that isn't an array carries no blocks.
+ */
+function piContentBlocks(content: unknown): any[] {
+  if (typeof content === "string") return content ? [{ type: "text", text: content }] : [];
+  return Array.isArray(content) ? content : [];
+}
 
 function roleToPi(r: ToastRole): string {
   if (r === "tool") return "toolResult";
