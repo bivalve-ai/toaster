@@ -3,15 +3,16 @@
 
 import { adapters } from "./adapters/index.js";
 import type { DiscoveredSession } from "./adapters/types.js";
+import type { AgentKind } from "./schemas/toast.js";
 
 export type { DiscoveredSession } from "./adapters/types.js";
 
 export async function discoverSessions(
-  filter?: "pi" | "claude" | "codex" | "opencode",
+  filter?: AgentKind,
 ): Promise<DiscoveredSession[]> {
   const kinds = filter
     ? [filter]
-    : (Object.keys(adapters) as Array<"pi" | "claude" | "codex" | "opencode">);
+    : (Object.keys(adapters) as AgentKind[]);
   const all: DiscoveredSession[] = [];
   for (const k of kinds) {
     const adapter = adapters[k];

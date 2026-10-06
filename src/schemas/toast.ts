@@ -4,7 +4,7 @@
 // agent reads its native session format into this shape and writes back out of
 // it. Translation becomes read-from-A → TOAST → write-to-B.
 
-export type AgentKind = "pi" | "claude" | "codex" | "opencode";
+export type AgentKind = "pi" | "claude" | "codex" | "opencode" | "pi-durable";
 
 // Actor role of an individual turn. "tool" normalizes all the ways agents
 // represent tool results (pi's role=toolResult message; claude's user-role

@@ -12,6 +12,7 @@ Current native session sources:
 - Claude Code
 - Codex CLI
 - OpenCode export JSON
+- pi-durable SQLite storage (read-only; e.g. Agent Dock's `~/.dock/session.sqlite`)
 
 The standard summary lives at [STANDARD.md](./STANDARD.md). The canonical detailed format spec lives at [spec/toast-v0.1.md](./spec/toast-v0.1.md). Adapter authors should start with [docs/adapters.md](./docs/adapters.md). Testing philosophy and A2E guidance live in [docs/testing.md](./docs/testing.md).
 
@@ -257,6 +258,14 @@ OpenCode:
 ```
 
 OpenCode support currently reads and writes export-style JSON files rather than discovering OpenCode's native session store.
+
+pi-durable (read-only):
+
+```text
+<storage>.sqlite#<conversationId>        default: ~/.dock/session.sqlite, or $DOCK_DIR/session.sqlite
+```
+
+A pi-durable file holds many conversations; the fragment picks one (the root when omitted). Toaster reads the conversation's context projection, the messages the next model request would see after resets, compactions and edits, through its own read-only connection, and records every entry the projection leaves out as an info loss. It never writes pi-durable storage; that belongs to the process hosting the Harness.
 
 ## Library
 

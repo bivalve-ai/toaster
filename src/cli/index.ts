@@ -109,12 +109,12 @@ examples
   toaster translate --to claude <pi-session-id-or-path>
 `;
 
-const KNOWN_AGENTS: ReadonlySet<AgentKind> = new Set<AgentKind>(["pi", "claude", "codex", "opencode"]);
+const KNOWN_AGENTS: ReadonlySet<AgentKind> = new Set<AgentKind>(["pi", "claude", "codex", "opencode", "pi-durable"]);
 
 function parseAgent(s: string | undefined): AgentKind | undefined {
   if (!s) return undefined;
   const v = s.toLowerCase();
-  if (v === "pi" || v === "claude" || v === "codex" || v === "opencode") return v as AgentKind;
+  if (v === "pi" || v === "claude" || v === "codex" || v === "opencode" || v === "pi-durable") return v as AgentKind;
   return undefined;
 }
 
@@ -324,7 +324,7 @@ function summarizeDiscovered(rows: DiscoveredSession[]): Record<AgentKind, numbe
   return rows.reduce((acc, row) => {
     acc[row.agent] += 1;
     return acc;
-  }, { pi: 0, claude: 0, codex: 0, opencode: 0 } as Record<AgentKind, number>);
+  }, { pi: 0, claude: 0, codex: 0, opencode: 0, "pi-durable": 0 } as Record<AgentKind, number>);
 }
 
 function nativeStoreHints(filter?: AgentKind): Array<{ agent: AgentKind; path: string; mode: "read" }> {
