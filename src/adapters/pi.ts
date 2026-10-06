@@ -385,7 +385,7 @@ export const piAdapter: AgentAdapter = {
         }
         if (turn.model) msg.model = turn.model;
         if (turn.provider) msg.provider = turn.provider;
-        if (turn.stopReason) msg.stopReason = turn.stopReason;
+        if (turn.role === "assistant") msg.stopReason = piStopReasonFromTrace(turn, losses, `turns[${i}].stopReason`);
         if (turn.usage) msg.usage = piUsageFromTrace(turn.usage);
         else if (turn.role === "assistant") msg.usage = piUsageFromTrace(emptyToastUsage());
       }
@@ -448,14 +448,36 @@ function roleToPi(r: ToastRole): string {
   return "user";
 }
 
+// pi-ai StopReason: "stop" | "length" | "toolUse" | "error" | "aborted"
+// (plus "pending"/"deferred", which pi never persists as finished turns).
 function mapPiStopReason(s?: string): ToastTurn["stopReason"] {
   if (!s) return undefined;
   if (s === "toolUse") return "tool_use";
   if (s === "length") return "length";
   if (s === "error") return "error";
-  if (s === "cancelled") return "cancelled";
+  if (s === "aborted" || s === "cancelled") return "cancelled";
   if (s === "stop") return "stop";
   return "unknown";
+}
+
+/**
+ * Inverse of mapPiStopReason. pi-ai requires a stop reason on every assistant
+ * message, so "unknown" or a missing value is written as "toolUse" when the
+ * turn carries tool calls and "stop" otherwise.
+ */
+function piStopReasonFromTrace(turn: ToastTurn, losses: ToastLoss[], path: string): string {
+  switch (turn.stopReason) {
+    case "tool_use": return "toolUse";
+    case "stop": return "stop";
+    case "length": return "length";
+    case "error": return "error";
+    case "cancelled": return "aborted";
+  }
+  const inferred = turn.content.some((b) => b.type === "tool_call") ? "toolUse" : "stop";
+  if (turn.stopReason === "unknown") {
+    losses.push(makeLoss("info", path, `unknown stop reason written as pi "${inferred}"`));
+  }
+  return inferred;
 }
 
 function mapPiUsage(u?: any): ToastUsage | undefined {
