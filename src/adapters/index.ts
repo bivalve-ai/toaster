@@ -5,12 +5,14 @@ import { piAdapter } from "./pi.js";
 import { claudeAdapter } from "./claude.js";
 import { codexAdapter } from "./codex.js";
 import { opencodeAdapter } from "./opencode.js";
+import { piDurableAdapter } from "./pi-durable.js";
 
 export const adapters: Record<AgentKind, AgentAdapter> = {
   pi: piAdapter,
   claude: claudeAdapter,
   codex: codexAdapter,
   opencode: opencodeAdapter,
+  "pi-durable": piDurableAdapter,
 } as Record<AgentKind, AgentAdapter>;
 
 export function getAdapter(kind: AgentKind): AgentAdapter {
@@ -29,4 +31,4 @@ export async function detectAgent(path: string): Promise<AgentKind | null> {
   return null;
 }
 
-export { piAdapter, claudeAdapter, codexAdapter, opencodeAdapter };
+export { piAdapter, claudeAdapter, codexAdapter, opencodeAdapter, piDurableAdapter };

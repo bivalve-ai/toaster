@@ -55,7 +55,7 @@ export {
   type CloudSafeMirrorOptions,
   type CloudSafeMirrorResult,
 } from "./mirror.js";
-export { adapters, getAdapter, detectAgent, piAdapter, claudeAdapter, codexAdapter, opencodeAdapter } from "./adapters/index.js";
+export { adapters, getAdapter, detectAgent, piAdapter, claudeAdapter, codexAdapter, opencodeAdapter, piDurableAdapter } from "./adapters/index.js";
 export type {
   AgentAdapter,
   AgentCompat,

@@ -152,7 +152,7 @@ export function makeImportedContextTurn(
 }
 
 function traceSourceAgent(agent: string): AgentKind {
-  if (agent === "pi" || agent === "claude" || agent === "codex" || agent === "opencode") return agent;
+  if (agent === "pi" || agent === "claude" || agent === "codex" || agent === "opencode" || agent === "pi-durable") return agent;
   return "pi";
 }
 
