@@ -1,0 +1,260 @@
+{
+  "traceVersion": 1,
+  "id": "0199a8f0-0003-7000-8000-000000000003",
+  "cwd": "/tmp/toaster-fixture",
+  "createdAt": "2026-10-01T12:00:00.000Z",
+  "source": {
+    "agent": "pi",
+    "path": "/tmp/toaster-fixture/session.jsonl",
+    "schemaVersion": 3
+  },
+  "agents": [
+    {
+      "agent": "pi",
+      "model": "claude-sonnet-4-5",
+      "provider": "anthropic"
+    }
+  ],
+  "turns": [
+    {
+      "id": "u1",
+      "parentId": null,
+      "timestamp": "2026-10-01T12:00:01.000Z",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "which api do you speak? (anthropic)"
+        }
+      ],
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 2
+      },
+      "metadata": {}
+    },
+    {
+      "id": "a2",
+      "parentId": "u1",
+      "timestamp": "2026-10-01T12:00:02.000Z",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "anthropic-messages"
+        }
+      ],
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "stopReason": "stop",
+      "usage": {
+        "inputTokens": 10,
+        "outputTokens": 5,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalTokens": 15,
+        "costUsd": 0
+      },
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 3
+      },
+      "metadata": {}
+    },
+    {
+      "id": "u3",
+      "parentId": "a2",
+      "timestamp": "2026-10-01T12:00:03.000Z",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "and openai?"
+        }
+      ],
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 4
+      },
+      "metadata": {}
+    },
+    {
+      "id": "a4",
+      "parentId": "u3",
+      "timestamp": "2026-10-01T12:00:04.000Z",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "openai-responses"
+        }
+      ],
+      "provider": "openai",
+      "model": "gpt-5",
+      "stopReason": "stop",
+      "usage": {
+        "inputTokens": 10,
+        "outputTokens": 5,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalTokens": 15,
+        "costUsd": 0
+      },
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 5
+      },
+      "metadata": {}
+    },
+    {
+      "id": "u5",
+      "parentId": "a4",
+      "timestamp": "2026-10-01T12:00:05.000Z",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "and google?"
+        }
+      ],
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 6
+      },
+      "metadata": {}
+    },
+    {
+      "id": "a6",
+      "parentId": "u5",
+      "timestamp": "2026-10-01T12:00:06.000Z",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "google-generative-ai"
+        }
+      ],
+      "provider": "google",
+      "model": "gemini-2.5-pro",
+      "stopReason": "stop",
+      "usage": {
+        "inputTokens": 10,
+        "outputTokens": 5,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalTokens": 15,
+        "costUsd": 0
+      },
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 7
+      },
+      "metadata": {}
+    },
+    {
+      "id": "u7",
+      "parentId": "a6",
+      "timestamp": "2026-10-01T12:00:07.000Z",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "and copilot claude?"
+        }
+      ],
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 8
+      },
+      "metadata": {}
+    },
+    {
+      "id": "a8",
+      "parentId": "u7",
+      "timestamp": "2026-10-01T12:00:08.000Z",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "anthropic-messages (kept from source)"
+        }
+      ],
+      "provider": "github-copilot",
+      "model": "claude-sonnet-4.6",
+      "stopReason": "stop",
+      "usage": {
+        "inputTokens": 10,
+        "outputTokens": 5,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalTokens": 15,
+        "costUsd": 0
+      },
+      "metadata": {
+        "piApi": "anthropic-messages"
+      },
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 9
+      }
+    },
+    {
+      "id": "u9",
+      "parentId": "a8",
+      "timestamp": "2026-10-01T12:00:09.000Z",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "and a provider pi has never heard of?"
+        }
+      ],
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 10
+      },
+      "metadata": {}
+    },
+    {
+      "id": "a10",
+      "parentId": "u9",
+      "timestamp": "2026-10-01T12:00:10.000Z",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "unknown; fallback"
+        }
+      ],
+      "provider": "acme-local",
+      "model": "acme-1",
+      "stopReason": "stop",
+      "usage": {
+        "inputTokens": 10,
+        "outputTokens": 5,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalTokens": 15,
+        "costUsd": 0
+      },
+      "provenance": {
+        "agent": "pi",
+        "path": "/tmp/toaster-fixture/session.jsonl",
+        "line": 11
+      },
+      "metadata": {}
+    }
+  ],
+  "events": [],
+  "metadata": {},
+  "losses": []
+}

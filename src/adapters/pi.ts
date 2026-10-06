@@ -257,7 +257,7 @@ export const piAdapter: AgentAdapter = {
           stopReason: mapPiStopReason(msg.stopReason),
           usage: mapPiUsage(msg.usage),
           provenance: baseProv(),
-          metadata: {},
+          metadata: typeof msg.api === "string" ? { piApi: msg.api } : {},
         };
         turns.push(turn);
 
@@ -385,6 +385,7 @@ export const piAdapter: AgentAdapter = {
         }
         if (turn.model) msg.model = turn.model;
         if (turn.provider) msg.provider = turn.provider;
+        if (turn.role === "assistant") msg.api = piApiForTurn(turn);
         if (turn.role === "assistant") msg.stopReason = piStopReasonFromTrace(turn, losses, `turns[${i}].stopReason`);
         if (turn.usage) msg.usage = piUsageFromTrace(turn.usage);
         else if (turn.role === "assistant") msg.usage = piUsageFromTrace(emptyToastUsage());
@@ -446,6 +447,34 @@ function roleToPi(r: ToastRole): string {
   if (r === "system") return "system";
   if (r === "developer") return "developer";
   return "user";
+}
+
+// pi-ai's AssistantMessage requires `api`, the wire protocol that produced it.
+// pi-ai compares provider + api + model with the active model before replaying
+// thinking signatures and provider-native tool-call data, so a missing or wrong
+// api can only make pi treat the turn as foreign (signatures dropped, thinking
+// sent as text), never the reverse. Values from the pi-ai 1.0.0 catalog, where
+// each of these providers uses a single api.
+const PI_API_BY_PROVIDER: Record<string, string> = {
+  anthropic: "anthropic-messages",
+  openai: "openai-responses",
+  "openai-codex": "openai-codex-responses",
+  "azure-openai-responses": "azure-openai-responses",
+  google: "google-generative-ai",
+  "google-vertex": "google-vertex",
+  "amazon-bedrock": "bedrock-converse-stream",
+  mistral: "mistral-conversations",
+};
+
+// Fallback for other providers: most OpenAI-compatible providers in pi-ai's
+// catalog (groq, deepseek, openrouter, together, ...) speak openai-completions.
+const PI_FALLBACK_API = "openai-completions";
+
+function piApiForTurn(turn: ToastTurn): string {
+  // Preserve the source value when the turn came from pi (see read()).
+  if (typeof turn.metadata?.piApi === "string" && turn.metadata.piApi) return turn.metadata.piApi;
+  const provider = turn.provider;
+  return provider && Object.hasOwn(PI_API_BY_PROVIDER, provider) ? PI_API_BY_PROVIDER[provider] : PI_FALLBACK_API;
 }
 
 // pi-ai StopReason: "stop" | "length" | "toolUse" | "error" | "aborted"

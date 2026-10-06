@@ -10,9 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SessionManager, convertToLlm } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime, SessionManager, convertToLlm } from "@earendil-works/pi-coding-agent";
 
 import { piAdapter } from "../src/adapters/pi.js";
+import { readToastArtifact } from "../src/library.js";
 import type { WriteOptions } from "../src/adapters/types.js";
 import { translate } from "../src/translate.js";
 
@@ -108,4 +109,50 @@ test("pi writer: unknown or missing stop reasons become toolUse/stop, never off-
     ["toolUse", "stop", "aborted"],
   );
   assert.ok(result.losses.some((loss) => loss.reason.includes('unknown stop reason written as pi "stop"')));
+});
+
+// ---------- bug 3: assistant api ----------
+
+test("pi reader keeps the source api on the turn", async () => {
+  const trace = await piAdapter.read(fixture("pi-stop-reasons.jsonl"));
+  const assistant = trace.turns.find((turn) => turn.role === "assistant");
+  assert.equal(assistant?.metadata.piApi, "anthropic-messages");
+});
+
+test("pi writer: assistant messages carry the api pi's own model catalog expects", async () => {
+  const trace = await readToastArtifact(fixture("toast-assistant-api.toast.json"));
+  const { dir, target } = await tempTarget();
+  await piAdapter.write(trace, { targetPath: target });
+  const { messages } = loadInPi(dir, target);
+
+  const assistants = messages.filter((message) => message.role === "assistant");
+  assert.deepEqual(
+    assistants.map((message) => [message.provider, message.model, message.api]),
+    [
+      ["anthropic", "claude-sonnet-4-5", "anthropic-messages"],
+      ["openai", "gpt-5", "openai-responses"],
+      ["google", "gemini-2.5-pro", "google-generative-ai"],
+      // Source value from turn.metadata.piApi wins over derivation.
+      ["github-copilot", "claude-sonnet-4.6", "anthropic-messages"],
+      // Provider pi-ai has no catalog entry for: documented fallback.
+      ["acme-local", "acme-1", "openai-completions"],
+    ],
+  );
+
+  // pi-ai only replays thinking signatures and native tool-call metadata when
+  // provider + api + model all match the active model, so the written api must
+  // equal what pi's catalog says for that model. Static catalog, no network,
+  // credentials file in the temp dir.
+  const runtime = await ModelRuntime.create({
+    authPath: join(dir, "auth.json"),
+    modelsPath: null,
+    modelsStorePath: join(dir, "models-store.json"),
+    allowModelNetwork: false,
+    refreshOnCreate: false,
+  });
+  for (const message of assistants.slice(0, 4)) {
+    const model = runtime.getModel(message.provider, message.model);
+    assert.ok(model, `pi catalog knows ${message.provider}/${message.model}`);
+    assert.equal(message.api, model.api, `${message.provider}/${message.model}`);
+  }
 });
