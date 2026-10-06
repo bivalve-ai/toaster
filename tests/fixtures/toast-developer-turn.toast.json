@@ -1,0 +1,105 @@
+{
+  "traceVersion": 1,
+  "id": "0199a8f0-0004-7000-8000-000000000004",
+  "cwd": "/tmp/toaster-fixture",
+  "createdAt": "2026-10-01T12:00:00.000Z",
+  "source": {
+    "agent": "codex",
+    "path": "/tmp/toaster-fixture/rollout.jsonl"
+  },
+  "agents": [
+    {
+      "agent": "codex",
+      "model": "gpt-5",
+      "provider": "openai"
+    }
+  ],
+  "turns": [
+    {
+      "id": "d1",
+      "parentId": null,
+      "timestamp": "2026-10-01T12:00:01.000Z",
+      "role": "developer",
+      "content": [
+        {
+          "type": "text",
+          "text": "Use pnpm, not npm."
+        }
+      ],
+      "provenance": {
+        "agent": "codex",
+        "path": "/tmp/toaster-fixture/rollout.jsonl",
+        "line": 2
+      },
+      "metadata": {}
+    },
+    {
+      "id": "u2",
+      "parentId": "d1",
+      "timestamp": "2026-10-01T12:00:02.000Z",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "install the deps"
+        }
+      ],
+      "provenance": {
+        "agent": "codex",
+        "path": "/tmp/toaster-fixture/rollout.jsonl",
+        "line": 3
+      },
+      "metadata": {}
+    },
+    {
+      "id": "a3",
+      "parentId": "u2",
+      "timestamp": "2026-10-01T12:00:03.000Z",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Running pnpm install."
+        }
+      ],
+      "provider": "openai",
+      "model": "gpt-5",
+      "stopReason": "stop",
+      "usage": {
+        "inputTokens": 30,
+        "outputTokens": 6,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalTokens": 36,
+        "costUsd": 0
+      },
+      "provenance": {
+        "agent": "codex",
+        "path": "/tmp/toaster-fixture/rollout.jsonl",
+        "line": 4
+      },
+      "metadata": {}
+    }
+  ],
+  "events": [
+    {
+      "id": "ev-1",
+      "type": "turn_context",
+      "timestamp": "2026-10-01T12:00:01.500Z",
+      "value": {
+        "turn_id": "turn-1",
+        "cwd": "/tmp/toaster-fixture",
+        "model": "gpt-5",
+        "effort": "high"
+      },
+      "provenance": {
+        "agent": "codex",
+        "path": "/tmp/toaster-fixture/rollout.jsonl",
+        "line": 1,
+        "rawType": "turn_context"
+      }
+    }
+  ],
+  "metadata": {},
+  "losses": []
+}

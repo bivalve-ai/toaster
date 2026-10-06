@@ -209,3 +209,29 @@ test("claude -> pi: a split assistant message does not cut pi's context short", 
   assert.equal(messages[1].stopReason, "toolUse");
   assert.equal(messages[2].toolCallId, call?.id);
 });
+
+// ---------- developer turns and imported context ----------
+
+test("pi writer: developer turns and imported events reach the model pi would call", async () => {
+  const trace = await readToastArtifact(fixture("toast-developer-turn.toast.json"));
+  const { dir, target } = await tempTarget();
+  await piAdapter.write(trace, { targetPath: target });
+  const { llm } = loadInPi(dir, target);
+
+  const texts = llm.map((message) => `${message.role}: ${textOf(message)}`);
+  assert.ok(texts.includes("user: Use pnpm, not npm."), texts.join("\n"));
+  assert.ok(texts.some((text) => text.startsWith("user: turn_context: ") && text.includes('"effort": "high"')), texts.join("\n"));
+  assert.deepEqual(
+    llm.map((message) => message.role),
+    ["user", "user", "user", "assistant"], // imported events, developer, user, assistant
+  );
+});
+
+test("pi reader: a toaster developer turn reads back as developer", async () => {
+  const trace = await readToastArtifact(fixture("toast-developer-turn.toast.json"));
+  const { target } = await tempTarget();
+  await piAdapter.write(trace, { targetPath: target });
+  const reread = await piAdapter.read(target);
+  assert.deepEqual(reread.turns.map((turn) => turn.role), ["developer", "developer", "user", "assistant"]);
+  assert.deepEqual(reread.turns[1].content, [{ type: "text", text: "Use pnpm, not npm." }]);
+});
