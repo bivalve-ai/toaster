@@ -265,7 +265,7 @@ pi-durable (read-only):
 <storage>.sqlite#<conversationId>        default: ~/.dock/session.sqlite, or $DOCK_DIR/session.sqlite
 ```
 
-A pi-durable file holds many conversations; the fragment picks one (the root when omitted). Toaster reads the conversation's context projection, the messages the next model request would see after resets, compactions and edits, through its own read-only connection, and records every entry the projection leaves out as an info loss. It never writes pi-durable storage; that belongs to the process hosting the Harness.
+A pi-durable file holds many conversations; the fragment picks one (the root when omitted). Toaster reads the conversation's context projection, the messages the next model request would see after resets, compactions and edits, through its own read-only connection, and records every entry the projection leaves out as an info loss. The raw entries ride along in `metadata.entries`, never in front of the target model. It never writes pi-durable storage; that belongs to the process hosting the Harness.
 
 ## Library
 
