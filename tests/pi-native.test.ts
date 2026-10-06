@@ -69,3 +69,43 @@ for (const thinkingPolicy of ["drop", "note"] as const) {
     assert.deepEqual(users[0].content, [{ type: "text", text: "HELLO" }]);
   });
 }
+
+// ---------- bug 2: stop reasons ----------
+
+test("pi reader maps pi-ai stop reasons to TOAST (toolUse, stop, aborted)", async () => {
+  const trace = await piAdapter.read(fixture("pi-stop-reasons.jsonl"));
+  const stops = trace.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.stopReason);
+  assert.deepEqual(stops, ["tool_use", "stop", "cancelled"]);
+});
+
+test("pi writer: TOAST stop reasons land as pi-ai values and the tool pair survives", async () => {
+  const { messages } = await translatePiFixtureThroughPi("pi-stop-reasons.jsonl");
+  const assistants = messages.filter((message) => message.role === "assistant");
+  assert.deepEqual(assistants.map((message) => message.stopReason), ["toolUse", "stop", "aborted"]);
+
+  const call = (assistants[0].content as PiMessage[]).find((block) => block.type === "toolCall");
+  assert.deepEqual(call, { type: "toolCall", id: "toolu_01A2B3C4D5", name: "bash", arguments: { command: "ls" } });
+
+  const results = messages.filter((message) => message.role === "toolResult");
+  assert.equal(results.length, 1);
+  assert.equal(results[0].toolCallId, call?.id);
+  assert.equal(results[0].toolName, "bash");
+  assert.equal(textOf(results[0]), "README.md\npackage.json\n");
+  // The result directly follows its call, as pi replays it.
+  assert.equal(messages.indexOf(results[0]), messages.indexOf(assistants[0]) + 1);
+});
+
+test("pi writer: unknown or missing stop reasons become toolUse/stop, never off-contract values", async () => {
+  const trace = await piAdapter.read(fixture("pi-stop-reasons.jsonl"));
+  const assistants = trace.turns.filter((turn) => turn.role === "assistant");
+  assistants[0].stopReason = undefined;
+  assistants[1].stopReason = "unknown";
+  const { dir, target } = await tempTarget();
+  const result = await piAdapter.write(trace, { targetPath: target });
+  const { messages } = loadInPi(dir, target);
+  assert.deepEqual(
+    messages.filter((message) => message.role === "assistant").map((message) => message.stopReason),
+    ["toolUse", "stop", "aborted"],
+  );
+  assert.ok(result.losses.some((loss) => loss.reason.includes('unknown stop reason written as pi "stop"')));
+});
