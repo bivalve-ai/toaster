@@ -391,11 +391,19 @@ export const piAdapter: AgentAdapter = {
         else if (turn.role === "assistant") msg.usage = piUsageFromTrace(emptyToastUsage());
       }
 
+      // pi-ai messages carry their own timestamp in ms; the entry's is ISO.
+      // Not on system messages: pi replays a timestamped system message as a
+      // complete prompt + tool baseline, and one without toolsAdded would
+      // resume the session with no tools.
+      const entryTimestamp = turn.timestamp ?? createdAt;
+      const messageTimestamp = Date.parse(entryTimestamp);
+      if (turn.role !== "system" && Number.isFinite(messageTimestamp)) msg.timestamp = messageTimestamp;
+
       lines.push({
         type: "message",
         id: turn.id,
         parentId: turn.parentId ?? null,
-        timestamp: turn.timestamp ?? createdAt,
+        timestamp: entryTimestamp,
         message: msg,
       });
     }
