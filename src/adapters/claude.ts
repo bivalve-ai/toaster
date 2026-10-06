@@ -78,15 +78,25 @@ export const claudeAdapter: AgentAdapter = {
   compat: claudeCompat,
 
   async detect(path: string): Promise<boolean> {
+    // The first line is usually a message or a snapshot; sessions started through the SDK or a host app (Conductor)
+    // open with queue-operation lines, and resumed ones with summary lines, so look past those for a message.
     try {
       const rl = createInterface({ input: createReadStream(path, { encoding: "utf-8" }) });
+      let seen = 0;
       for await (const line of rl) {
         if (!line.trim()) continue;
+        let d: { type?: string; sessionId?: string };
         try {
-          const d = JSON.parse(line) as { type?: string; sessionId?: string };
-          rl.close();
-          return d.type === "permission-mode" || d.type === "file-history-snapshot" || d.type === "user" || d.type === "assistant";
+          d = JSON.parse(line);
         } catch {
+          rl.close();
+          return false;
+        }
+        if (d.type === "permission-mode" || d.type === "file-history-snapshot" || d.type === "user" || d.type === "assistant") {
+          rl.close();
+          return true;
+        }
+        if ((d.type !== "queue-operation" && d.type !== "summary") || ++seen > 50) {
           rl.close();
           return false;
         }
