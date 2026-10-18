@@ -4,6 +4,8 @@ All notable changes to Toaster will be documented here.
 
 ## Unreleased
 
+- Read-only `conductor` adapter: one session of Conductor's SQLite store (Claude Code or Codex) as TOAST.
+
 ## 0.0.3
 
 - Fix opencode round-trip so `native -> TOAST -> native` is structurally idempotent.

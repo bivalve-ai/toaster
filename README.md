@@ -13,6 +13,7 @@ Current native session sources:
 - Codex CLI
 - OpenCode export JSON
 - pi-durable SQLite storage (read-only; e.g. Agent Dock's `~/.dock/session.sqlite`)
+- Conductor's session store (read-only; Claude Code and Codex sessions run inside the Conductor app)
 
 The standard summary lives at [STANDARD.md](./STANDARD.md). The canonical detailed format spec lives at [spec/toast-v0.1.md](./spec/toast-v0.1.md). Adapter authors should start with [docs/adapters.md](./docs/adapters.md). Testing philosophy and A2E guidance live in [docs/testing.md](./docs/testing.md).
 
@@ -266,6 +267,14 @@ pi-durable (read-only):
 ```
 
 A pi-durable file holds many conversations; the fragment picks one (the root when omitted). Toaster reads the conversation's context projection, the messages the next model request would see after resets, compactions and edits, through its own read-only connection, and records every entry the projection leaves out as an info loss. The raw entries ride along in `metadata.entries`, never in front of the target model. It never writes pi-durable storage; that belongs to the process hosting the Harness.
+
+Conductor (read-only):
+
+```text
+<conductor.db>#<sessionId>        default: ~/Library/Application Support/com.conductor.app/conductor.db, or $CONDUCTOR_DB
+```
+
+Conductor keeps every session of every workspace in one SQLite file, Claude Code and Codex alike, as the prompts people sent plus the agent's stream messages. The fragment is Conductor's session id. Toaster reads it through its own read-only connection: replies coalesce into assistant turns, tool results become tool turns, subagent messages become subagent turns, and `result` messages (cost, duration) become events. Progress telemetry in the stream is counted into info losses. `metadata.nativeSessionId` is the agent's own session id, which also names its transcript in `~/.claude/projects` or `~/.codex/sessions` while that still exists. It never writes Conductor's storage; that belongs to the app.
 
 ## Library
 
