@@ -482,7 +482,7 @@ function blockKey(b: any): string {
   return `u:${JSON.stringify(b).slice(0, 60)}`;
 }
 
-function inferProvider(model?: string): string | undefined {
+export function inferProvider(model?: string): string | undefined {
   if (!model) return undefined;
   if (model.startsWith("claude")) return "anthropic";
   if (model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3")) return "openai";
@@ -490,7 +490,7 @@ function inferProvider(model?: string): string | undefined {
   return undefined;
 }
 
-function mapClaudeStopReason(s?: string | null): ToastTurn["stopReason"] {
+export function mapClaudeStopReason(s?: string | null): ToastTurn["stopReason"] {
   if (!s) return undefined;
   if (s === "tool_use") return "tool_use";
   if (s === "max_tokens" || s === "length") return "length";
@@ -499,7 +499,7 @@ function mapClaudeStopReason(s?: string | null): ToastTurn["stopReason"] {
   return "unknown";
 }
 
-function mapClaudeUsage(u?: any): ToastUsage | undefined {
+export function mapClaudeUsage(u?: any): ToastUsage | undefined {
   if (!u) return undefined;
   return {
     inputTokens: u.input_tokens,
@@ -517,7 +517,7 @@ function claudeToolInput(
   return coerceToolInputObject("claude", input, losses, path);
 }
 
-function stringifyToolContent(c: unknown): string {
+export function stringifyToolContent(c: unknown): string {
   if (typeof c === "string") return c;
   if (c === null || c === undefined) return "";
   try { return JSON.stringify(c, null, 2); } catch { return String(c); }

@@ -115,7 +115,7 @@ export async function runCorpus(root: string, options: CorpusOptions = {}): Prom
   const tempRoot = await mkdtemp(join(tmpdir(), "toaster-corpus-"));
   const targets = options.targets && options.targets.length > 0
     ? options.targets
-    : (Object.keys(adapters) as AgentKind[]).filter((kind) => kind !== "pi-durable"); // read-only: its storage belongs to its Harness
+    : (Object.keys(adapters) as AgentKind[]).filter((kind) => kind !== "pi-durable" && kind !== "conductor"); // read-only: their storage belongs to its host
 
   const cases: CorpusCaseReport[] = [];
   const summary: CorpusSummary = {

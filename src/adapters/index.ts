@@ -6,6 +6,7 @@ import { claudeAdapter } from "./claude.js";
 import { codexAdapter } from "./codex.js";
 import { opencodeAdapter } from "./opencode.js";
 import { piDurableAdapter } from "./pi-durable.js";
+import { conductorAdapter } from "./conductor.js";
 
 export const adapters: Record<AgentKind, AgentAdapter> = {
   pi: piAdapter,
@@ -13,6 +14,7 @@ export const adapters: Record<AgentKind, AgentAdapter> = {
   codex: codexAdapter,
   opencode: opencodeAdapter,
   "pi-durable": piDurableAdapter,
+  conductor: conductorAdapter,
 } as Record<AgentKind, AgentAdapter>;
 
 export function getAdapter(kind: AgentKind): AgentAdapter {
@@ -31,4 +33,4 @@ export async function detectAgent(path: string): Promise<AgentKind | null> {
   return null;
 }
 
-export { piAdapter, claudeAdapter, codexAdapter, opencodeAdapter, piDurableAdapter };
+export { piAdapter, claudeAdapter, codexAdapter, opencodeAdapter, piDurableAdapter, conductorAdapter };

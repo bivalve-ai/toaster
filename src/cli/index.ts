@@ -109,12 +109,12 @@ examples
   toaster translate --to claude <pi-session-id-or-path>
 `;
 
-const KNOWN_AGENTS: ReadonlySet<AgentKind> = new Set<AgentKind>(["pi", "claude", "codex", "opencode", "pi-durable"]);
+const KNOWN_AGENTS: ReadonlySet<AgentKind> = new Set<AgentKind>(["pi", "claude", "codex", "opencode", "pi-durable", "conductor"]);
 
 function parseAgent(s: string | undefined): AgentKind | undefined {
   if (!s) return undefined;
   const v = s.toLowerCase();
-  if (v === "pi" || v === "claude" || v === "codex" || v === "opencode" || v === "pi-durable") return v as AgentKind;
+  if (v === "pi" || v === "claude" || v === "codex" || v === "opencode" || v === "pi-durable" || v === "conductor") return v as AgentKind;
   return undefined;
 }
 
@@ -324,7 +324,7 @@ function summarizeDiscovered(rows: DiscoveredSession[]): Record<AgentKind, numbe
   return rows.reduce((acc, row) => {
     acc[row.agent] += 1;
     return acc;
-  }, { pi: 0, claude: 0, codex: 0, opencode: 0, "pi-durable": 0 } as Record<AgentKind, number>);
+  }, { pi: 0, claude: 0, codex: 0, opencode: 0, "pi-durable": 0, conductor: 0 } as Record<AgentKind, number>);
 }
 
 function nativeStoreHints(filter?: AgentKind): Array<{ agent: AgentKind; path: string; mode: "read" }> {
@@ -333,6 +333,7 @@ function nativeStoreHints(filter?: AgentKind): Array<{ agent: AgentKind; path: s
     { agent: "claude", path: "~/.claude/projects", mode: "read" },
     { agent: "codex", path: "~/.codex/sessions", mode: "read" },
     { agent: "opencode", path: "export-style JSON files only; no native store scan yet", mode: "read" },
+    { agent: "conductor", path: "~/Library/Application Support/com.conductor.app/conductor.db", mode: "read" },
   ];
   return filter ? all.filter((s) => s.agent === filter) : all;
 }
